@@ -1,51 +1,83 @@
 import Link from "next/link";
 
 export default function Home() {
-  return (
-      <main className="min-h-screen bg-[#0f172a] text-white flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    return (
+        <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
 
-        {/* Background Effects */}
-        <div className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
-          <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600 rounded-full blur-[120px]"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-emerald-500 rounded-full blur-[120px]"></div>
-        </div>
-
-        <div className="z-10 text-center max-w-2xl space-y-8 animate-in fade-in zoom-in duration-1000">
-
-          {/* Logo / Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-4">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"/>
-            Palpita Arena v2.0
-          </div>
-
-          <h1 className="text-5xl md:text-7xl font-black tracking-tighter bg-gradient-to-r from-white via-gray-200 to-gray-500 bg-clip-text text-transparent">
-            PALPITA<br/>ARENA
-          </h1>
-
-          <p className="text-lg text-gray-400 max-w-md mx-auto leading-relaxed">
-            A plataforma definitiva de palpites esportivos.
-            <br/>
-            <span className="text-sm opacity-60">Next.js 15 · Server Actions · Realtime</span>
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            <Link
-                href="/login"
-                className="w-full sm:w-auto px-8 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg transition-all transform hover:scale-105 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+            {/* 1. IMAGEM DE FUNDO (Estádio) */}
+            <div
+                className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transform scale-105"
+                style={{
+                    backgroundImage: "url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=3870&auto=format&fit=crop')",
+                }}
             >
-              ENTRAR AGORA
-            </Link>
+                {/* Máscara Escura (Overlay) - Para o texto aparecer bem */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-blue-900/40" />
+            </div>
 
-            <button className="w-full sm:w-auto px-8 py-3 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold rounded-lg transition-all">
-              CRIAR CONTA
-            </button>
-          </div>
+            {/* 2. CONTEÚDO PRINCIPAL */}
+            <div className="relative z-10 text-center px-4 max-w-4xl space-y-6 animate-in fade-in zoom-in duration-700">
 
-        </div>
+                {/* Badge da Temporada */}
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest backdrop-blur-sm">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"/>
+                    2ª Temporada Disponível
+                </div>
 
-        <footer className="absolute bottom-6 text-xs text-gray-600 uppercase tracking-widest">
-          Powered by Vercel & NeonDB
-        </footer>
-      </main>
-  );
+                {/* Título Gigante "O JOGO FICA SÉRIO" */}
+                <h1 className="text-6xl md:text-8xl font-black italic tracking-tighter text-white drop-shadow-2xl leading-[0.9]">
+                    O JOGO FICA <br/>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-lime-400">
+            SÉRIO AQUI.
+          </span>
+                </h1>
+
+                <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto font-medium drop-shadow-md">
+                    Escudos, artilharia, rankings e a glória de um título.
+                    Palpites entre amigos com pontuação automática em tempo real.
+                </p>
+
+                {/* Botões de Ação */}
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+                    <Link
+                        href="/criar-campeonato"
+                        className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-lime-500 hover:from-emerald-400 hover:to-lime-400 text-black font-black text-lg rounded transform hover:skew-x-[-10deg] transition-all shadow-[0_0_30px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
+                    >
+                        <span>CRIAR CAMPEONATO 🏆</span>
+                    </Link>
+
+                    <Link
+                        href="/login"
+                        className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold text-lg rounded backdrop-blur-md transition-all flex items-center justify-center gap-2"
+                    >
+                        ENTRAR NA LIGA ➜
+                    </Link>
+                </div>
+
+            </div>
+
+            {/* 3. RODAPÉ (Igual ao PHP) */}
+            <footer className="absolute bottom-0 w-full z-10 border-t border-white/10 bg-black/40 backdrop-blur-md">
+                <div className="grid grid-cols-3 max-w-5xl mx-auto py-6 text-center divide-x divide-white/10">
+
+                    <div className="space-y-1">
+                        <h3 className="text-2xl font-black text-white">10+</h3>
+                        <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">Ligas Oficiais</p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <h3 className="text-2xl font-black text-emerald-400">Ao Vivo</h3>
+                        <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">Atualização Real</p>
+                    </div>
+
+                    <div className="space-y-1">
+                        <h3 className="text-2xl font-black text-white">H2H</h3>
+                        <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">Modo Confronto</p>
+                    </div>
+
+                </div>
+            </footer>
+
+        </main>
+    );
 }
