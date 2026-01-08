@@ -1,0 +1,117 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // Vamos usar Postgres (melhor que MySQL para Next.js)
+  url      = env("DATABASE_URL")
+}
+
+// User (Substitui o PlayerModel.php)
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String? // Pode ser nulo se logar com Google
+  image     String? // Avatar
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+
+  predictions Prediction[]
+  leagues     LeagueMember[]
+
+  totalPoints  Int  @default(0)
+  rankPosition Int?
+}
+
+// Campeonato (Substitui ChampionshipModel.php)
+model Championship {
+  id     String  @id @default(cuid())
+  name   String // Ex: Brasileirão 2026
+  slug   String  @unique
+  logo   String?
+  active Boolean @default(true)
+  rounds Round[]
+}
+
+// Rodada (Substitui RoundModel.php)
+model Round {
+  id       String      @id @default(cuid())
+  name     String // Ex: "Rodada 1"
+  status   RoundStatus @default(SCHEDULED)
+  deadline DateTime // Data limite para palpitar
+
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id])
+  matches        Match[]
+}
+
+// Jogo Real (Substitui RealGameModel.php)
+model Match {
+  id       String   @id @default(cuid())
+  homeTeam String // Time Casa
+  awayTeam String // Time Fora
+  homeLogo String?
+  awayLogo String?
+  date     DateTime
+  location String?
+
+  homeScore Int? // Placar final casa
+  awayScore Int? // Placar final fora
+
+  roundId     String
+  round       Round        @relation(fields: [roundId], references: [id])
+  predictions Prediction[]
+}
+
+// Palpite (Substitui PredictionModel.php)
+model Prediction {
+  id        String @id @default(cuid())
+  homeScore Int
+  awayScore Int
+
+  pointsEarned Int?    @default(0) // Pontos ganhos (calculado pelo ScoreCalculator)
+  exactScore   Boolean @default(false)
+
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, matchId]) // Garante 1 palpite por jogo por usuário
+}
+
+// Ligas Privadas (Substitui LeagueModel.php)
+model League {
+  id      String         @id @default(cuid())
+  name    String
+  code    String         @unique
+  ownerId String
+  members LeagueMember[]
+}
+
+model LeagueMember {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id])
+  leagueId String
+  league   League @relation(fields: [leagueId], references: [id])
+
+  @@unique([userId, leagueId])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum RoundStatus {
+  SCHEDULED
+  OPEN
+  CLOSED
+  FINISHED
+}
