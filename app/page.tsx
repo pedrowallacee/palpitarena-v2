@@ -8,7 +8,7 @@ export default function Home() {
             <div
                 className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transform scale-105"
                 style={{
-                    backgroundImage: "url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=3870&auto=format&fit=crop')",
+                    backgroundImage: "url('https://wallpapers.com/images/hd/720p-sports-background-1275-x-704-x8qi0yyjkcubnw5s.jpg')",
                 }}
             >
                 {/* Máscara Escura (Overlay) - Para o texto aparecer bem */}
