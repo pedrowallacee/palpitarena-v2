@@ -1,4 +1,3 @@
-// src/actions/save-bets.ts
 'use server'
 
 import { prisma } from "@/lib/prisma"
@@ -11,13 +10,10 @@ export async function saveBetsAction(formData: FormData) {
 
     if (!userId) return { success: false, message: "Usuário não logado" }
 
-    // Vamos varrer os dados do formulário
+    // Converte formData em array para iterar
     const entries = Array.from(formData.entries())
 
-    // Filtra apenas os campos de score (ex: home_matchID e away_matchID)
-    const updates = []
-
-    // Agrupamos os dados por MatchID
+    // Identifica quais jogos receberam palpites
     const matchesToUpdate = new Set<string>()
     entries.forEach(([key]) => {
         if (key.startsWith('home_') || key.startsWith('away_')) {
@@ -27,14 +23,15 @@ export async function saveBetsAction(formData: FormData) {
     })
 
     try {
-        // Processa cada jogo identificado no form
         for (const matchId of matchesToUpdate) {
             const homeScore = formData.get(`home_${matchId}`)
             const awayScore = formData.get(`away_${matchId}`)
 
+            // Só salva se ambos os campos tiverem valor
             if (homeScore !== null && awayScore !== null && homeScore !== "" && awayScore !== "") {
-                // Upsert: Cria se não existe, atualiza se existe
-                await prisma.bet.upsert({
+
+                // ATUALIZADO: Usa 'prediction' em vez de 'bet'
+                await prisma.prediction.upsert({
                     where: {
                         userId_matchId: {
                             userId: userId,
@@ -42,14 +39,14 @@ export async function saveBetsAction(formData: FormData) {
                         }
                     },
                     update: {
-                        homeTeamScore: Number(homeScore),
-                        awayTeamScore: Number(awayScore)
+                        homeScore: Number(homeScore), // Nome novo da coluna
+                        awayScore: Number(awayScore)  // Nome novo da coluna
                     },
                     create: {
                         userId: userId,
                         matchId: matchId,
-                        homeTeamScore: Number(homeScore),
-                        awayTeamScore: Number(awayScore)
+                        homeScore: Number(homeScore),
+                        awayScore: Number(awayScore)
                     }
                 })
             }
@@ -59,7 +56,7 @@ export async function saveBetsAction(formData: FormData) {
         return { success: true, message: "Palpites salvos com sucesso!" }
 
     } catch (error) {
-        console.error(error)
-        return { success: false, message: "Erro ao salvar palpites" }
+        console.error("Erro ao salvar palpites:", error)
+        return { success: false, message: "Erro ao salvar palpites. Tente novamente." }
     }
 }

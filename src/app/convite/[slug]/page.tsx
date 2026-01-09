@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma"
-import { joinChampionship } from "@/actions/join-championship-action"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 
 export default async function InvitePage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
@@ -9,7 +9,8 @@ export default async function InvitePage({ params }: { params: Promise<{ slug: s
         where: { slug },
         include: {
             owner: true,
-            _count: { select: { members: true } }
+            // CORREÇÃO: Mudado de 'members' para 'participants'
+            _count: { select: { participants: true } }
         }
     })
 
@@ -29,13 +30,13 @@ export default async function InvitePage({ params }: { params: Promise<{ slug: s
 
                 {/* Avatar do Dono */}
                 <div className="mx-auto w-24 h-24 bg-gradient-to-br from-emerald-500 to-lime-500 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.4)] mb-6 animate-in zoom-in duration-500">
-          <span className="text-4xl font-black text-black">
-            {championship.owner.name.charAt(0).toUpperCase()}
-          </span>
+                    <span className="text-4xl font-black text-black">
+                        {(championship.owner.name || "U").charAt(0).toUpperCase()}
+                    </span>
                 </div>
 
                 <h2 className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-2">
-                    VOCÊ FOI CONVOCADO POR {championship.owner.name.split(" ")[0].toUpperCase()}
+                    VOCÊ FOI CONVOCADO POR {(championship.owner.name || "Alguém").split(" ")[0].toUpperCase()}
                 </h2>
 
                 <h1 className="text-4xl md:text-5xl font-black italic text-white mb-4 leading-tight">
@@ -47,15 +48,17 @@ export default async function InvitePage({ params }: { params: Promise<{ slug: s
                         "{championship.description || 'Venha mostrar que você entende de futebol!'}"
                     </p>
                     <div className="mt-4 flex items-center justify-center gap-2 text-sm text-emerald-400 font-bold">
-                        👥 {championship._count.members} Participantes já estão na arena
+                        {/* CORREÇÃO: participants */}
+                        👥 {championship._count.participants} Participantes já estão na arena
                     </div>
                 </div>
 
-                <form action={joinChampionship.bind(null, slug)}>
+                {/* CORREÇÃO: Botão agora é um Link direto para a seleção de time */}
+                <Link href={`/campeonatos/${slug}/escolher-time`} className="block w-full">
                     <button className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xl rounded-lg shadow-xl hover:scale-105 transition-transform flex items-center justify-center gap-2">
                         ACEITAR DESAFIO ⚽
                     </button>
-                </form>
+                </Link>
 
                 <Link href="/" className="block mt-6 text-gray-500 hover:text-white text-sm transition-colors">
                     Não, obrigado. Vou ficar no banco.

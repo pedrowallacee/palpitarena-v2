@@ -1,10 +1,10 @@
 'use server'
 
+// CORREÇÃO: O nome correto do arquivo é football-api
 import { getMatchesByDate } from "@/services/football-api"
 
 export async function fetchAvailableMatches(date: string) {
     try {
-        // CORREÇÃO: Chamando a função com o nome novo
         const matches = await getMatchesByDate(date)
         return matches
     } catch (error) {

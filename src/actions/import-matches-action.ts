@@ -1,49 +1,45 @@
 'use server'
 
-import { getMatchesFromApi } from "@/services/api-football"
+import { getMatchesByDate } from "@/services/football-api"
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 export async function importMatches(formData: FormData) {
     const roundId = formData.get("roundId") as string
-    const date = formData.get("date") as string // Formato YYYY-MM-DD
+    const date = formData.get("date") as string
     const slug = formData.get("slug") as string
 
     if (!roundId || !date) return
 
     try {
-        // 1. Busca na API
-        const matches = await getMatchesFromApi(date);
+        const matches = await getMatchesByDate(date);
 
         if (matches.length === 0) {
-            console.log("Nenhum jogo importante encontrado nesta data.");
+            console.log("Nenhum jogo encontrado nesta data.");
             return;
         }
 
-        // 2. Salva no Banco
         let count = 0;
         for (const match of matches) {
-            // Verifica se o jogo já existe nessa rodada para não duplicar
             const exists = await prisma.match.findFirst({
                 where: {
-                    roundId: roundId,
-                    homeTeam: match.teams.home.name,
-                    awayTeam: match.teams.away.name
+                    apiId: match.apiId
                 }
             });
 
             if (!exists) {
                 await prisma.match.create({
                     data: {
+                        apiId: match.apiId,
                         roundId: roundId,
-                        date: new Date(match.fixture.date),
-                        location: match.fixture.venue.name || "Estádio Desconhecido",
+                        date: new Date(match.date),
+                        location: "Estádio",
                         status: "SCHEDULED",
-                        homeTeam: match.teams.home.name,
-                        homeLogo: match.teams.home.logo,
-                        awayTeam: match.teams.away.name,
-                        awayLogo: match.teams.away.logo,
+                        homeTeam: match.homeTeam,
+                        homeLogo: match.homeTeamLogo,
+                        awayTeam: match.awayTeam,
+                        awayLogo: match.awayTeamLogo,
                         homeScore: null,
                         awayScore: null
                     }
@@ -51,8 +47,6 @@ export async function importMatches(formData: FormData) {
                 count++;
             }
         }
-
-        console.log(`${count} jogos importados com sucesso!`);
 
         revalidatePath(`/campeonatos/${slug}/rodada/${roundId}`);
 
