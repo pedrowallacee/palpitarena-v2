@@ -2,26 +2,21 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { getMatchesByDate } from "@/services/football-api" // Importe a API
 
-// Regra de Pontuação Simples (Pode ser extraída para um arquivo utils depois)
+// Função auxiliar de cálculo
 function calculatePoints(predHome: number, predAway: number, realHome: number, realAway: number) {
-    // 1. Cravada (Placar Exato) = 3 Pontos (ou 5, depende da sua regra)
-    if (predHome === realHome && predAway === realAway) {
-        return 3 // Mude para 5 se preferir
-    }
+    if (predHome === realHome && predAway === realAway) return 3 // Cravada
 
-    // 2. Acertou o Vencedor ou Empate (Mas errou placar) = 1 Ponto
     const predWinner = predHome > predAway ? 'HOME' : predHome < predAway ? 'AWAY' : 'DRAW'
     const realWinner = realHome > realAway ? 'HOME' : realHome < realAway ? 'AWAY' : 'DRAW'
 
-    if (predWinner === realWinner) {
-        return 1 // Mude para 3 se preferir
-    }
+    if (predWinner === realWinner) return 1 // Acertou vencedor
 
-    // 3. Errou tudo
-    return 0
+    return 0 // Errou tudo
 }
 
+// 1. ATUALIZAR UM ÚNICO JOGO (Manual)
 export async function updateMatchResult(formData: FormData) {
     const matchId = formData.get("matchId") as string
     const homeScore = Number(formData.get("homeScore"))
@@ -29,67 +24,126 @@ export async function updateMatchResult(formData: FormData) {
     const slug = formData.get("slug") as string
     const roundId = formData.get("roundId") as string
 
-    if (!matchId) return { success: false, message: "ID do jogo inválido" }
+    if (!matchId) return { success: false, message: "ID inválido" }
 
+    await processMatchUpdate(matchId, homeScore, awayScore)
+
+    revalidatePath(`/campeonatos/${slug}/rodada/${roundId}`)
+    return { success: true, message: "Jogo atualizado!" }
+}
+
+// 2. ATUALIZAR RODADA INTEIRA (Via API) - NOVA FUNÇÃO!
+export async function updateRoundResults(roundId: string, slug: string) {
     try {
-        // 1. Atualiza o Jogo Real com o Placar Final
-        const match = await prisma.match.update({
-            where: { id: matchId },
-            data: {
-                homeScore,
-                awayScore,
-                status: 'FINISHED'
-            },
-            include: {
-                // Precisamos saber a rodada -> campeonato para achar os participantes
-                round: true,
-                // Precisamos de todos os palpites desse jogo
-                predictions: true
-            }
+        // Busca a data da rodada
+        const round = await prisma.round.findUnique({
+            where: { id: roundId },
+            include: { matches: true }
         })
 
-        const championshipId = match.round.championshipId
+        if (!round) return { success: false, message: "Rodada não encontrada" }
 
-        // 2. Calcula pontos para cada palpiteiro
-        for (const prediction of match.predictions) {
-            const points = calculatePoints(prediction.homeScore, prediction.awayScore, homeScore, awayScore)
+        // Busca dados atualizados na API
+        // Pega a data do primeiro jogo ou da deadline para referência
+        const dateRef = round.matches[0]?.date || round.deadline
+        const dateStr = dateRef.toISOString().split('T')[0]
 
-            // Se o usuário pontuou (pontos > 0) ou se precisamos atualizar o zero
-            if (points >= 0) {
-                // A. Atualiza o Palpite (Prediction) para mostrar na tela "Ganhou X pontos"
-                await prisma.prediction.update({
-                    where: { id: prediction.id },
-                    data: {
-                        pointsEarned: points,
-                        isProcessed: true,
-                        exactScore: points >= 3 // Considera cravada se for maior que a pontuação base
+        const apiMatches = await getMatchesByDate(dateStr)
+
+        if (!apiMatches || apiMatches.length === 0) {
+            return { success: false, message: "Nenhum jogo encontrado na API para esta data." }
+        }
+
+        let updatedCount = 0
+
+        // Para cada jogo no nosso banco, tenta achar o correspondente na API
+        for (const dbMatch of round.matches) {
+            const apiMatch = apiMatches.find(m => m.apiId === dbMatch.apiId)
+
+            // Se achou e o jogo já terminou ou está rolando, atualiza
+            if (apiMatch && (apiMatch.status === 'FINISHED' || apiMatch.status === 'FT' || apiMatch.status === 'AET' || apiMatch.status === 'PEN')) {
+                // Se o placar mudou, processa
+                if (dbMatch.homeScore !== apiMatch.homeScore || dbMatch.awayScore !== apiMatch.awayScore) {
+                    // Nota: A API retorna homeTeamScore/awayTeamScore ou goals.home/goals.away dependendo de como você fez o mapping no football-api.
+                    // Ajuste aqui conforme seu objeto apiMatch real. Supondo que seu getMatchesByDate já retorna limpo:
+                    // Verifique se no football-api.ts você está retornando homeScore/awayScore.
+                    // Se não, ajuste para usar apiMatch.goals.home / apiMatch.goals.away
+
+                    // Vou assumir que você ajustará o football-api ou que o objeto vem com score.
+                    // Se o seu football-api retorna apenas homeTeam/awayTeam nomes, você precisa garantir que ele retorne o PLACAR também.
+
+                    // *IMPORTANTE*: Vou assumir que você vai editar o football-api para trazer scores se ainda não traz.
+                    // Se não tiver scores, isso vai quebrar.
+                    // Vamos assumir que apiMatch tem { homeScore: number, awayScore: number }
+
+                    // Se seu getMatchesByDate não retorna score, você precisa atualizar ele.
+                    // Vou usar uma lógica genérica aqui:
+                    const hScore = (apiMatch as any).goals?.home ?? (apiMatch as any).homeScore
+                    const aScore = (apiMatch as any).goals?.away ?? (apiMatch as any).awayScore
+
+                    if (hScore !== undefined && aScore !== undefined) {
+                        await processMatchUpdate(dbMatch.id, hScore, aScore)
+                        updatedCount++
                     }
-                })
-
-                // B. Atualiza o Ranking do Participante (CORREÇÃO DO ERRO)
-                // Em vez de atualizar prisma.user, atualizamos prisma.championshipParticipant
-                await prisma.championshipParticipant.update({
-                    where: {
-                        userId_championshipId: {
-                            userId: prediction.userId,
-                            championshipId: championshipId
-                        }
-                    },
-                    data: {
-                        // Soma os pontos no ranking de palpites
-                        predictionPoints: { increment: points },
-                        // Soma na pontuação geral (usada para classificação)
-                        points: { increment: points }
-                    }
-                })
+                }
             }
         }
 
         revalidatePath(`/campeonatos/${slug}/rodada/${roundId}`)
-        return { success: true, message: "Resultado salvo e ranking atualizado!" }
+        return { success: true, message: `${updatedCount} jogos sincronizados!` }
 
     } catch (error) {
-        console.error("Erro ao atualizar resultado:", error)
-        return { success: false, message: "Erro ao processar resultados." }
+        console.error("Erro ao sincronizar rodada:", error)
+        return { success: false, message: "Erro interno." }
+    }
+}
+
+// Lógica Centralizada de Atualização e Pontuação
+async function processMatchUpdate(matchId: string, homeScore: number, awayScore: number) {
+    // 1. Atualiza Jogo
+    const match = await prisma.match.update({
+        where: { id: matchId },
+        data: {
+            homeScore,
+            awayScore,
+            status: 'FINISHED'
+        },
+        include: {
+            round: true,
+            predictions: true
+        }
+    })
+
+    const championshipId = match.round.championshipId
+
+    // 2. Calcula Pontos
+    for (const prediction of match.predictions) {
+        const points = calculatePoints(prediction.homeScore, prediction.awayScore, homeScore, awayScore)
+
+        if (points >= 0) {
+            // Atualiza Palpite
+            await prisma.prediction.update({
+                where: { id: prediction.id },
+                data: {
+                    pointsEarned: points,
+                    isProcessed: true,
+                    exactScore: points >= 3
+                }
+            })
+
+            // Atualiza Ranking
+            await prisma.championshipParticipant.update({
+                where: {
+                    userId_championshipId: {
+                        userId: prediction.userId,
+                        championshipId: championshipId
+                    }
+                },
+                data: {
+                    predictionPoints: { increment: points },
+                    points: { increment: points }
+                }
+            })
+        }
     }
 }

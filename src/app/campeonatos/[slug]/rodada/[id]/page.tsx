@@ -4,6 +4,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { MatchCard } from "@/components/match-card"
 import { MatchSelector } from "@/components/match-selector"
+// CORREÇÃO: Importando a função específica para rodadas
 import { updateRoundResults } from "@/actions/update-results-action"
 
 export default async function RoundDetailsPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
@@ -13,7 +14,6 @@ export default async function RoundDetailsPage({ params }: { params: Promise<{ s
     const userId = cookieStore.get("palpita_session")?.value
     if (!userId) redirect("/login")
 
-    // Busca Rodada + Jogos + Palpites
     const round = await prisma.round.findUnique({
         where: { id },
         include: {
@@ -27,14 +27,12 @@ export default async function RoundDetailsPage({ params }: { params: Promise<{ s
 
     if (!round) return <div>Rodada não encontrada</div>
 
-    // Busca Ranking da Rodada (Quem fez mais pontos nestes jogos)
-    // Agrupamento manual simples pois Prisma groupBy pode ser chato em server components
+    // Busca Ranking da Rodada
     const allPredictions = await prisma.prediction.findMany({
         where: { match: { roundId: id }, isProcessed: true },
         include: { user: true }
     })
 
-    // Agrupa pontos por usuário
     const rankingMap = new Map()
     allPredictions.forEach(p => {
         const current = rankingMap.get(p.userId) || { name: p.user.name, points: 0, avatar: p.user.name?.charAt(0) }
@@ -67,6 +65,7 @@ export default async function RoundDetailsPage({ params }: { params: Promise<{ s
                     {isOwner && (
                         <form action={async () => {
                             'use server'
+                            // CORREÇÃO: Chamando a função correta
                             await updateRoundResults(id, slug)
                         }}>
                             <button className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 transition-transform hover:scale-105">
