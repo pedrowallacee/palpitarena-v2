@@ -1,12 +1,14 @@
 'use server'
-import { getMatchesFromApi } from "@/services/api-football"
+
+import { getMatchesByDate } from "@/services/football-api"
 
 export async function fetchAvailableMatches(date: string) {
     try {
-        const matches = await getMatchesFromApi(date)
-        return { success: true, matches }
+        // CORREÇÃO: Chamando a função com o nome novo
+        const matches = await getMatchesByDate(date)
+        return matches
     } catch (error) {
-        console.error(error)
-        return { success: false, error: "Erro ao buscar jogos" }
+        console.error("Erro ao buscar jogos:", error)
+        return []
     }
 }
