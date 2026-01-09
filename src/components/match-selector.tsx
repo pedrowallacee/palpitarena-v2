@@ -13,20 +13,16 @@ interface MatchSelectorProps {
 export function MatchSelector({ roundId, slug, defaultDate }: MatchSelectorProps) {
     const [date, setDate] = useState(defaultDate)
     const [matches, setMatches] = useState<any[]>([])
-
-    // MUDANÇA 1: Usamos IDs agora, não índices numéricos (Mais seguro)
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-
     const [status, setStatus] = useState<"idle" | "loading" | "saving" | "success">("idle")
 
     // 1. Busca na API
     async function handleSearch() {
         setStatus("loading")
-
-        // MUDANÇA 2: O Bug Fix! Limpamos a seleção antes de trazer novos jogos
         setSelectedIds(new Set())
-        setMatches([]) // Limpa visualmente enquanto carrega
+        setMatches([])
 
+        // Agora a action retorna { success: boolean, matches: any[] }
         const res = await fetchAvailableMatches(date)
 
         if (res.success) {
@@ -34,11 +30,12 @@ export function MatchSelector({ roundId, slug, defaultDate }: MatchSelectorProps
             setStatus("idle")
         } else {
             alert("Erro ao buscar jogos!")
+            setMatches([])
             setStatus("idle")
         }
     }
 
-    // 2. Toggle do Checkbox (Agora usando ID)
+    // 2. Toggle do Checkbox
     function toggleMatch(apiId: number) {
         const newSet = new Set(selectedIds)
         if (newSet.has(apiId)) {
@@ -59,7 +56,6 @@ export function MatchSelector({ roundId, slug, defaultDate }: MatchSelectorProps
 
         await saveSelectedMatches(selectedGames, roundId, slug)
 
-        // Limpa tudo e mostra sucesso
         setMatches([])
         setSelectedIds(new Set())
         setStatus("success")
@@ -86,13 +82,13 @@ export function MatchSelector({ roundId, slug, defaultDate }: MatchSelectorProps
                 <button
                     onClick={handleSearch}
                     disabled={status === "loading"}
-                    className="bg-white/10 hover:bg-white/20 text-white font-bold px-6 py-3 rounded transition-colors"
+                    className="bg-white/10 hover:bg-white/20 text-white font-bold px-6 py-3 rounded transition-colors disabled:opacity-50"
                 >
                     {status === "loading" ? "Buscando..." : "BUSCAR JOGOS"}
                 </button>
             </div>
 
-            {/* LISTA DE RESULTADOS (CHECKBOXES) */}
+            {/* LISTA DE RESULTADOS */}
             {matches.length > 0 && (
                 <div className="space-y-4">
                     <div className="flex justify-between items-center text-sm text-gray-400 mb-2">
@@ -106,17 +102,17 @@ export function MatchSelector({ roundId, slug, defaultDate }: MatchSelectorProps
                                 key={match.apiId}
                                 onClick={() => toggleMatch(match.apiId)}
                                 className={`
-                  cursor-pointer p-3 rounded-lg border flex items-center gap-4 transition-all select-none
-                  ${selectedIds.has(match.apiId)
+                                    cursor-pointer p-3 rounded-lg border flex items-center gap-4 transition-all select-none
+                                    ${selectedIds.has(match.apiId)
                                     ? 'bg-emerald-500/10 border-emerald-500'
                                     : 'bg-black/20 border-white/5 hover:bg-white/5'}
-                `}
+                                `}
                             >
                                 {/* Checkbox Visual */}
                                 <div className={`
-                  w-5 h-5 rounded border flex items-center justify-center transition-colors
-                  ${selectedIds.has(match.apiId) ? 'bg-emerald-500 border-emerald-500 text-black' : 'border-gray-600'}
-                `}>
+                                    w-5 h-5 rounded border flex items-center justify-center transition-colors
+                                    ${selectedIds.has(match.apiId) ? 'bg-emerald-500 border-emerald-500 text-black' : 'border-gray-600'}
+                                `}>
                                     {selectedIds.has(match.apiId) && "✓"}
                                 </div>
 

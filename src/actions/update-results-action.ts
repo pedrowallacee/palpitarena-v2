@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { getMatchesByDate } from "@/services/football-api" // Importe a API
+import { getMatchesByDate } from "@/services/football-api"
 
 // Função auxiliar de cálculo
 function calculatePoints(predHome: number, predAway: number, realHome: number, realAway: number) {
@@ -32,7 +32,7 @@ export async function updateMatchResult(formData: FormData) {
     return { success: true, message: "Jogo atualizado!" }
 }
 
-// 2. ATUALIZAR RODADA INTEIRA (Via API) - NOVA FUNÇÃO!
+// 2. ATUALIZAR RODADA INTEIRA (Via API)
 export async function updateRoundResults(roundId: string, slug: string) {
     try {
         // Busca a data da rodada
@@ -59,25 +59,9 @@ export async function updateRoundResults(roundId: string, slug: string) {
         // Para cada jogo no nosso banco, tenta achar o correspondente na API
         for (const dbMatch of round.matches) {
             const apiMatch = apiMatches.find(m => m.apiId === dbMatch.apiId)
-
-            // Se achou e o jogo já terminou ou está rolando, atualiza
             if (apiMatch && (apiMatch.status === 'FINISHED' || apiMatch.status === 'FT' || apiMatch.status === 'AET' || apiMatch.status === 'PEN')) {
                 // Se o placar mudou, processa
                 if (dbMatch.homeScore !== apiMatch.homeScore || dbMatch.awayScore !== apiMatch.awayScore) {
-                    // Nota: A API retorna homeTeamScore/awayTeamScore ou goals.home/goals.away dependendo de como você fez o mapping no football-api.
-                    // Ajuste aqui conforme seu objeto apiMatch real. Supondo que seu getMatchesByDate já retorna limpo:
-                    // Verifique se no football-api.ts você está retornando homeScore/awayScore.
-                    // Se não, ajuste para usar apiMatch.goals.home / apiMatch.goals.away
-
-                    // Vou assumir que você ajustará o football-api ou que o objeto vem com score.
-                    // Se o seu football-api retorna apenas homeTeam/awayTeam nomes, você precisa garantir que ele retorne o PLACAR também.
-
-                    // *IMPORTANTE*: Vou assumir que você vai editar o football-api para trazer scores se ainda não traz.
-                    // Se não tiver scores, isso vai quebrar.
-                    // Vamos assumir que apiMatch tem { homeScore: number, awayScore: number }
-
-                    // Se seu getMatchesByDate não retorna score, você precisa atualizar ele.
-                    // Vou usar uma lógica genérica aqui:
                     const hScore = (apiMatch as any).goals?.home ?? (apiMatch as any).homeScore
                     const aScore = (apiMatch as any).goals?.away ?? (apiMatch as any).awayScore
 
