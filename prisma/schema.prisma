@@ -1,112 +1,267 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // Vamos usar Postgres (melhor que MySQL para Next.js)
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// User (Substitui o PlayerModel.php)
+// =========================================================
+// 1. USUÁRIOS E PERFIL
+// =========================================================
+
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String? // Pode ser nulo se logar com Google
-  image     String? // Avatar
-  role      Role     @default(USER)
+  id       String  @id @default(cuid())
+  name     String
+  email    String  @unique
+  password String
+  image    String?
+  role     Role    @default(USER)
+
+  // Auditoria
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  predictions Prediction[]
-  leagues     LeagueMember[]
+  // Relações
+  ownedChampionships Championship[]            @relation("ChampionshipOwner")
+  participations     ChampionshipParticipant[] // Times que o usuário controla
+  predictions        Prediction[]
+  notifications      Notification[]
 
-  totalPoints  Int  @default(0)
-  rankPosition Int?
+  // Solicitações de criação de campeonato
+  requests ChampionshipRequest[]
 }
 
-// Campeonato (Substitui ChampionshipModel.php)
+// =========================================================
+// 2. CAMPEONATOS (O Torneio)
+// =========================================================
+
 model Championship {
-  id     String  @id @default(cuid())
-  name   String // Ex: Brasileirão 2026
-  slug   String  @unique
-  logo   String?
-  active Boolean @default(true)
-  rounds Round[]
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  logo        String?
+  banner      String?
+
+  // Vínculo com a Liga Real (API-Sports)
+  apiLeagueId Int? // Ex: 71 (Brasileirão), 39 (Premier League)
+
+  // Status e Configurações
+  status        ChampionshipStatus @default(REGISTRATION)
+  hasGroupStage Boolean            @default(true)
+  hasKnockout   Boolean            @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation("ChampionshipOwner", fields: [ownerId], references: [id])
+
+  rounds       Round[]
+  participants ChampionshipParticipant[]
 }
 
-// Rodada (Substitui RoundModel.php)
+// =========================================================
+// 3. PARTICIPANTES (Os "Times" dos Usuários)
+// =========================================================
+
+model ChampionshipParticipant {
+  id       String   @id @default(cuid())
+  joinedAt DateTime @default(now())
+
+  // Identidade do Time Escolhido
+  teamName  String // Ex: "Flamengo", "Real Madrid"
+  teamLogo  String? // URL do escudo
+  teamApiId Int? // ID do time na API real (para bloquear seleção duplicada)
+
+  // Fase de Grupos
+  group String? // "A", "B", "C"...
+
+  // Tabela de Classificação
+  points        Int @default(0)
+  matchesPlayed Int @default(0)
+  wins          Int @default(0)
+  draws         Int @default(0)
+  losses        Int @default(0)
+
+  // Critérios de Desempate
+  predictionPoints Int @default(0) // Saldo de Pontos (Soma dos palpites)
+  pointsConceded   Int @default(0) // Pontos sofridos em duelos
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+
+  // Histórico de Duelos (User vs User)
+  homeDuels Duel[] @relation("HomeParticipant")
+  awayDuels Duel[] @relation("AwayParticipant")
+  wonDuels  Duel[] @relation("DuelWinner")
+
+  @@unique([userId, championshipId]) // Usuário só pode ter 1 time por campeonato
+}
+
+// =========================================================
+// 4. RODADAS
+// =========================================================
+
 model Round {
   id       String      @id @default(cuid())
-  name     String // Ex: "Rodada 1"
+  name     String // Ex: "Rodada 1", "Oitavas de Final"
+  type     RoundType   @default(GROUP_STAGE)
   status   RoundStatus @default(SCHEDULED)
   deadline DateTime // Data limite para palpitar
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   championshipId String
-  championship   Championship @relation(fields: [championshipId], references: [id])
-  matches        Match[]
+  championship   Championship @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+
+  matches Match[] // Jogos Reais (Flamengo x Vasco)
+  duels   Duel[] // Confrontos Virtuais (Pedro x João)
 }
 
-// Jogo Real (Substitui RealGameModel.php)
+// =========================================================
+// 5. JOGOS REAIS (Base para Palpites)
+// =========================================================
+
 model Match {
-  id       String   @id @default(cuid())
-  homeTeam String // Time Casa
-  awayTeam String // Time Fora
+  id    String @id @default(cuid())
+  apiId Int?   @unique // ID oficial da partida na API Externa
+
+  homeTeam String
+  awayTeam String
   homeLogo String?
   awayLogo String?
+
   date     DateTime
   location String?
+  status   MatchStatus @default(SCHEDULED)
 
-  homeScore Int? // Placar final casa
-  awayScore Int? // Placar final fora
+  homeScore Int?
+  awayScore Int?
 
-  roundId     String
-  round       Round        @relation(fields: [roundId], references: [id])
+  roundId String
+  round   Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
   predictions Prediction[]
 }
 
-// Palpite (Substitui PredictionModel.php)
+// =========================================================
+// 6. DUELOS (PvP - Mata-mata e Grupos)
+// =========================================================
+
+model Duel {
+  id String @id @default(cuid())
+
+  // Participantes do Duelo
+  homeParticipantId String
+  homeParticipant   ChampionshipParticipant @relation("HomeParticipant", fields: [homeParticipantId], references: [id])
+
+  awayParticipantId String
+  awayParticipant   ChampionshipParticipant @relation("AwayParticipant", fields: [awayParticipantId], references: [id])
+
+  // Placar do Duelo (Pontos feitos nos palpites da rodada)
+  homeScore Int @default(0)
+  awayScore Int @default(0)
+
+  // Resultado
+  winnerId String?
+  winner   ChampionshipParticipant? @relation("DuelWinner", fields: [winnerId], references: [id])
+
+  isWO   Boolean    @default(false) // Se houve violação de cópia excessiva
+  status DuelStatus @default(SCHEDULED)
+
+  roundId String
+  round   Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+}
+
+// =========================================================
+// 7. PALPITES
+// =========================================================
+
 model Prediction {
-  id        String @id @default(cuid())
+  id String @id @default(cuid())
+
   homeScore Int
   awayScore Int
 
-  pointsEarned Int?    @default(0) // Pontos ganhos (calculado pelo ScoreCalculator)
+  // Resultados
+  pointsEarned Int     @default(0)
   exactScore   Boolean @default(false)
+  isProcessed  Boolean @default(false)
 
-  userId  String
-  user    User   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   matchId String
-  match   Match  @relation(fields: [matchId], references: [id])
+  match   Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, matchId])
+}
+
+// =========================================================
+// 8. NOTIFICAÇÕES
+// =========================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// =========================================================
+// 9. SOLICITAÇÕES DE CAMPEONATO (NOVO)
+// =========================================================
+
+model ChampionshipRequest {
+  id String @id @default(cuid())
+
+  // Dados do Campeonato Desejado
+  name        String
+  description String?
+  leagueType  String // Ex: Brasileirão, Premier League...
+  whatsapp    String // Para contato
+
+  status RequestStatus @default(PENDING)
 
   createdAt DateTime @default(now())
 
-  @@unique([userId, matchId]) // Garante 1 palpite por jogo por usuário
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Ligas Privadas (Substitui LeagueModel.php)
-model League {
-  id      String         @id @default(cuid())
-  name    String
-  code    String         @unique
-  ownerId String
-  members LeagueMember[]
-}
-
-model LeagueMember {
-  id       String @id @default(cuid())
-  userId   String
-  user     User   @relation(fields: [userId], references: [id])
-  leagueId String
-  league   League @relation(fields: [leagueId], references: [id])
-
-  @@unique([userId, leagueId])
-}
+// =========================================================
+// ENUMS
+// =========================================================
 
 enum Role {
   USER
   ADMIN
+}
+
+enum ChampionshipStatus {
+  REGISTRATION
+  GROUP_STAGE
+  KNOCKOUT
+  FINISHED
+}
+
+enum RoundType {
+  GROUP_STAGE
+  ROUND_OF_16
+  QUARTER_FINAL
+  SEMI_FINAL
+  FINAL
+  THIRD_PLACE
 }
 
 enum RoundStatus {
@@ -114,4 +269,23 @@ enum RoundStatus {
   OPEN
   CLOSED
   FINISHED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  POSTPONED
+}
+
+enum DuelStatus {
+  SCHEDULED
+  FINISHED
+  CANCELED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

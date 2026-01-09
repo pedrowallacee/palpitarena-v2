@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { HeroActions } from "@/components/landing/hero-actions";
 
 export default function Home() {
     return (
@@ -28,8 +28,8 @@ export default function Home() {
                 <h1 className="text-6xl md:text-8xl font-black italic tracking-tighter text-white drop-shadow-2xl leading-[0.9]">
                     O JOGO FICA <br/>
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-lime-400">
-            SÉRIO AQUI.
-          </span>
+                        SÉRIO AQUI.
+                    </span>
                 </h1>
 
                 <p className="text-lg md:text-xl text-gray-300 max-w-2xl mx-auto font-medium drop-shadow-md">
@@ -37,26 +37,12 @@ export default function Home() {
                     Palpites entre amigos com pontuação automática em tempo real.
                 </p>
 
-                {/* Botões de Ação */}
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
-                    <Link
-                        href="/criar-campeonato"
-                        className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-lime-500 hover:from-emerald-400 hover:to-lime-400 text-black font-black text-lg rounded transform hover:skew-x-[-10deg] transition-all shadow-[0_0_30px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
-                    >
-                        <span>CRIAR CAMPEONATO 🏆</span>
-                    </Link>
-
-                    <Link
-                        href="/login"
-                        className="w-full sm:w-auto px-8 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold text-lg rounded backdrop-blur-md transition-all flex items-center justify-center gap-2"
-                    >
-                        ENTRAR NA LIGA ➜
-                    </Link>
-                </div>
+                {/* Botões de Ação Interativos (Substituímos os Links pelo componente) */}
+                <HeroActions />
 
             </div>
 
-            {/* 3. RODAPÉ (Igual ao PHP) */}
+            {/* 3. RODAPÉ */}
             <footer className="absolute bottom-0 w-full z-10 border-t border-white/10 bg-black/40 backdrop-blur-md">
                 <div className="grid grid-cols-3 max-w-5xl mx-auto py-6 text-center divide-x divide-white/10">
 
