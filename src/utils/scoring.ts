@@ -1,42 +1,50 @@
-// Regras do Jogo
-// 1. CRAVADA (Placar Exato): 10 Pontos
-// 2. VENCEDOR + SALDO (Ex: Palpite 2-0, Real 3-1): 7 Pontos
-// 3. VENCEDOR SIMPLES (Ex: Palpite 1-0, Real 2-1): 5 Pontos
-// 4. EMPATE GARANTIDO (Ex: Palpite 1-1, Real 2-2): 5 Pontos
-// 5. GOL DE UM TIME (Acertou gols de um lado): +1 Ponto Extra (Opcional)
+// src/utils/scoring.ts
 
-export function calculatePoints(predHome: number, predAway: number, realHome: number, realAway: number) {
-    let points = 0
-    let exactScore = false
+export const SCORING_RULES = {
+    OUSADO: 6,       // Ex: 3x1, 4x0 (Vencedor com 3+ gols)
+    EMPATE_EXATO: 4, // Ex: 1x1, 2x2
+    PLACAR_EXATO: 3, // Ex: 1x0, 2x0, 2x1 (Placar simples)
+    EMPATE: 2,       // Ex: Apostou 1x1, foi 0x0
+    VITORIA: 1,      // Ex: Apostou 2x0, foi 1x0
+    ERRO: 0
+}
 
-    // 1. CRAVADA (Exato)
-    if (predHome === realHome && predAway === realAway) {
-        points = 10
-        exactScore = true
-        return { points, exactScore } // Retorna logo pois é a pontuação máxima
-    }
+export function calculatePoints(
+    realHome: number,
+    realAway: number,
+    predHome: number,
+    predAway: number
+): { points: number, type: string } {
 
-    // Identificar Vencedor Real e Palpitado
-    const realWinner = realHome > realAway ? 'HOME' : realHome < realAway ? 'AWAY' : 'DRAW'
-    const predWinner = predHome > predAway ? 'HOME' : predHome < predAway ? 'AWAY' : 'DRAW'
+    const isExact = realHome === predHome && realAway === predAway
 
-    // 2. ACERTOU O RESULTADO (Vencedor ou Empate)
-    if (realWinner === predWinner) {
-        points = 5 // Base por acertar quem ganhou
+    // Resultados (Quem ganhou ou se deu empate)
+    const realResult = realHome > realAway ? 'HOME' : realHome < realAway ? 'AWAY' : 'DRAW'
+    const predResult = predHome > predAway ? 'HOME' : predHome < predAway ? 'AWAY' : 'DRAW'
 
-        // Bônus: Acertou o Saldo de Gols? (Ex: Palpite 2-0 (saldo 2) e Jogo 3-1 (saldo 2))
-        const realDiff = realHome - realAway
-        const predDiff = predHome - predAway
-
-        if (realDiff === predDiff) {
-            points += 2 // Total 7
+    // 1. LÓGICA DE PLACAR EXATO (CRAVADA)
+    if (isExact) {
+        if (realResult === 'DRAW') {
+            return { points: SCORING_RULES.EMPATE_EXATO, type: 'EMPATE_EXATO' }
         }
+
+        // Regra do Placar Ousado: Vencedor fez 3 ou mais gols?
+        const winnerGoals = Math.max(realHome, realAway)
+        if (winnerGoals >= 3) {
+            return { points: SCORING_RULES.OUSADO, type: 'OUSADO' }
+        }
+
+        return { points: SCORING_RULES.PLACAR_EXATO, type: 'PLACAR_EXATO' }
     }
 
-    // Bônus Extra: Acertou gols de um dos times exatamente? (Consolação)
-    // Ex: Palpite 2-1 (Errou vencedor), Jogo 0-1. Acertou que o visitante fez 1 gol.
-    // Pode adicionar +1 ponto aqui se quiser, mas vou deixar comentado para não inflacionar.
-    // if (predHome === realHome || predAway === realAway) points += 1
+    // 2. ACERTOU O RESULTADO (MAS ERROU O PLACAR)
+    if (realResult === predResult) {
+        if (realResult === 'DRAW') {
+            return { points: SCORING_RULES.EMPATE, type: 'EMPATE' }
+        }
+        return { points: SCORING_RULES.VITORIA, type: 'VITORIA' }
+    }
 
-    return { points, exactScore }
+    // 3. ERROU TUDO
+    return { points: SCORING_RULES.ERRO, type: 'ERRO' }
 }

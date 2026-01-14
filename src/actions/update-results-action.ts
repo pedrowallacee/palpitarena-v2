@@ -2,122 +2,138 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { calculatePoints } from "@/utils/scoring" // Importe a função que criamos acima
-
-const API_KEY = process.env.FOOTBALL_KEY_1
-const BASE_URL = "https://v3.football.api-sports.io"
+import { calculatePoints } from "@/utils/scoring"
+import { getMatchesByDate, getLiveMatches } from "@/services/football-api"
 
 export async function updateRoundResultsAction(roundId: string, slug: string) {
-    if (!API_KEY) return { success: false, message: "Sem chave de API." }
+    console.log("🚀 [DEBUG] Iniciando atualização da rodada:", roundId)
 
     try {
-        // 1. Busca jogos da rodada
-        const matches = await prisma.match.findMany({
-            where: { roundId, apiId: { not: null } },
-            include: { predictions: true } // Trazemos os palpites junto
+        const round = await prisma.round.findUnique({
+            where: { id: roundId },
+            include: { matches: { include: { predictions: true } } }
         })
 
-        if (matches.length === 0) return { success: false, message: "Nenhum jogo vinculado à API." }
+        if (!round) return { success: false, message: "Rodada não encontrada" }
 
-        let updatedMatches = 0
+        // 1. EXTRAIR DATAS ÚNICAS
+        const uniqueDates = Array.from(new Set(round.matches.map(m => {
+            return m.date.toISOString().split('T')[0]
+        })))
 
-        for (const match of matches) {
-            // Só consulta API se o jogo ainda não acabou ou se queremos atualizar (revisão)
-            // if (match.status === 'FINISHED') continue;
+        console.log(`📅 [DEBUG] Datas para buscar:`, uniqueDates)
 
-            const res = await fetch(`${BASE_URL}/fixtures?id=${match.apiId}`, {
-                headers: { "x-apisports-key": API_KEY }
-            })
+        let foundGames: any[] = []
 
-            const data = await res.json()
-            const fixtureData = data.response?.[0]
+        // 2. BUSCAR NA API (Por Data)
+        for (const date of uniqueDates) {
+            const games = await getMatchesByDate(date)
+            if (games.length > 0) {
+                foundGames = [...foundGames, ...games]
+            }
+        }
 
-            if (fixtureData) {
-                const statusShort = fixtureData.fixture.status.short
-                const goals = fixtureData.goals
-                const isFinished = ['FT', 'AET', 'PEN'].includes(statusShort)
+        // 3. BUSCAR AO VIVO (Garantia extra)
+        const liveGames = await getLiveMatches()
+        if (liveGames.length > 0) {
+            foundGames = [...foundGames, ...liveGames]
+        }
 
-                // Atualiza o Jogo no Banco
-                await prisma.match.update({
-                    where: { id: match.id },
+        console.log(`📡 [DEBUG] Total de jogos encontrados na API (Mundo todo): ${foundGames.length}`)
+
+        let gamesUpdatedCount = 0
+
+        // 4. ATUALIZAR NO BANCO (Cruzamento de IDs)
+        for (const apiGame of foundGames) {
+
+            // CORREÇÃO AQUI: Normalizamos para Número para o Banco de Dados
+            const apiIdInt = Number(apiGame.apiId)
+
+            // Na comparação, transformamos o do banco em string para garantir match
+            // (Isso resolve o erro se um for Int e o outro String no Typescript)
+            const matchInDb = round.matches.find(m => m.apiId?.toString() === apiIdInt.toString())
+
+            if (matchInDb) {
+                // Traduz status
+                let ourStatus = 'SCHEDULED'
+                if (['1H', '2H', 'HT', 'ET', 'P', 'LIVE', 'BT', 'INT'].includes(apiGame.status)) ourStatus = 'LIVE'
+                if (['FT', 'AET', 'PEN'].includes(apiGame.status)) ourStatus = 'FINISHED'
+                if (['PST', 'CANC', 'ABD'].includes(apiGame.status)) ourStatus = 'SCHEDULED'
+
+                console.log(`💾 [SYNC SUCESSO] ${matchInDb.homeTeam} x ${matchInDb.awayTeam} -> ${apiGame.homeScore}x${apiGame.awayScore} (${ourStatus})`)
+
+                await prisma.match.updateMany({
+                    // Aqui usamos o Int, que é o que o seu banco espera
+                    where: { apiId: apiIdInt },
                     data: {
-                        status: isFinished ? 'FINISHED' : 'LIVE',
-                        homeScore: goals.home,
-                        awayScore: goals.away,
+                        homeScore: apiGame.homeScore,
+                        awayScore: apiGame.awayScore,
+                        status: ourStatus as any
                     }
                 })
+                gamesUpdatedCount++
+            }
+        }
 
-                // === A MÁGICA: CALCULAR PONTOS DOS USUÁRIOS ===
-                if (goals.home !== null && goals.away !== null) {
+        if (gamesUpdatedCount === 0) {
+            console.warn("⚠️ [AVISO] A API trouxe jogos, mas nenhum ID bateu. Verifique se os 'apiId' no banco estão corretos.")
+        }
+
+        // 5. RECALCULAR PONTOS
+        const updatedRound = await prisma.round.findUnique({
+            where: { id: roundId },
+            include: { matches: { include: { predictions: true } } }
+        })
+
+        if (updatedRound) {
+            for (const match of updatedRound.matches) {
+                if (match.homeScore !== null && match.awayScore !== null) {
                     for (const prediction of match.predictions) {
-                        const { points, exactScore } = calculatePoints(
-                            prediction.homeScore,
-                            prediction.awayScore,
-                            goals.home,
-                            goals.away
+                        const result = calculatePoints(
+                            match.homeScore, match.awayScore,
+                            prediction.homeScore, prediction.awayScore
                         )
-
-                        // Atualiza o Palpite individual
                         await prisma.prediction.update({
                             where: { id: prediction.id },
                             data: {
-                                pointsEarned: points,
-                                exactScore: exactScore,
+                                pointsEarned: result.points,
+                                exactScore: result.type.includes('EXACT') || result.type === 'OUSADO' || result.type === 'EMPATE_EXATO',
                                 isProcessed: true
                             }
                         })
                     }
                 }
-                updatedMatches++
             }
         }
 
-        // === PASSO FINAL: ATUALIZAR O RANKING GERAL DO CAMPEONATO ===
-        // Isso soma todos os palpites de cada usuário e atualiza a tabela 'ChampionshipParticipant'
-
-        // 1. Pega todos os participantes
+        // 6. ATUALIZAR RANKING
         const participants = await prisma.championshipParticipant.findMany({
-            where: { championship: { rounds: { some: { id: roundId } } } },
-            select: { id: true, userId: true, championshipId: true }
+            where: { championshipId: round.championshipId }
         })
 
-        for (const p of participants) {
-            if (!p.userId) continue
-
-            // Soma todos os pontos de palpites desse usuário nesse campeonato
-            const totalPoints = await prisma.prediction.aggregate({
-                where: {
-                    userId: p.userId,
-                    match: { round: { championshipId: p.championshipId } }
-                },
-                _sum: { pointsEarned: true }
-            })
-
-            // Conta quantas cravadas
-            const totalExacts = await prisma.prediction.count({
-                where: {
-                    userId: p.userId,
-                    match: { round: { championshipId: p.championshipId } },
-                    exactScore: true
-                }
-            })
-
-            // Atualiza a tabela de classificação
-            await prisma.championshipParticipant.update({
-                where: { id: p.id },
-                data: {
-                    points: totalPoints._sum.pointsEarned || 0,
-                    // Podemos usar o campo 'wins' para guardar Cravadas ou criar um campo novo
-                    wins: totalExacts
-                }
-            })
+        for (const participant of participants) {
+            if (participant.userId) {
+                const agg = await prisma.prediction.aggregate({
+                    _sum: { pointsEarned: true },
+                    where: {
+                        userId: participant.userId,
+                        match: { round: { championshipId: round.championshipId } }
+                    }
+                })
+                await prisma.championshipParticipant.update({
+                    where: { id: participant.id },
+                    data: { points: agg._sum.pointsEarned || 0 }
+                })
+            }
         }
 
         revalidatePath(`/campeonatos/${slug}`)
-        return { success: true, message: `Resultados e Ranking atualizados!` }
+        revalidatePath(`/campeonatos/${slug}/rodada/${roundId}`)
+
+        return { success: true, message: `Sucesso! ${gamesUpdatedCount} placares sincronizados.` }
 
     } catch (error) {
-        console.error(error)
-        return { success: false, message: "Erro ao processar resultados." }
+        console.error("🔥 [ERRO CRÍTICO]:", error)
+        return { success: false, message: "Erro interno ao atualizar." }
     }
 }

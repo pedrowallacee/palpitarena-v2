@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { fetchMatchesFromApiAction } from "@/actions/fetch-matches-action"
 import { saveSelectedMatches } from "@/actions/save-selected-matches-action"
 
@@ -16,10 +16,29 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
     const [saving, setSaving] = useState(false)
     const [selectedMatches, setSelectedMatches] = useState<any[]>([])
 
+    // Estados para controlar quais ligas estão expandidas (opcional, por padrão deixo todas abertas)
+    const [collapsedLeagues, setCollapsedLeagues] = useState<string[]>([])
+
+    // 1. AGRUPAR JOGOS POR LIGA (Mágica acontece aqui)
+    const matchesByLeague = useMemo(() => {
+        const groups: Record<string, any[]> = {}
+
+        matches.forEach(match => {
+            const leagueName = match.leagueName || match.league || "Outros"
+            if (!groups[leagueName]) {
+                groups[leagueName] = []
+            }
+            groups[leagueName].push(match)
+        })
+
+        // Opcional: Ordenar ligas por prioridade ou alfabética
+        return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
+    }, [matches])
+
     async function handleSearch() {
         if (!date) return alert("Selecione uma data!")
         setLoadingSearch(true)
-        setSelectedMatches([])
+        setSelectedMatches([]) // Limpa seleção anterior ao buscar nova data
 
         const res = await fetchMatchesFromApiAction(0, date)
         setLoadingSearch(false)
@@ -42,10 +61,36 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
         }
     }
 
+    // Função para selecionar/deselecionar todos de uma liga específica
+    function toggleLeagueSelection(leagueMatches: any[]) {
+        const allIds = leagueMatches.map(m => m.apiId || m.externalId)
+        const allSelected = leagueMatches.every(m =>
+            selectedMatches.some(s => (s.apiId || s.externalId) === (m.apiId || m.externalId))
+        )
+
+        if (allSelected) {
+            // Remove todos dessa liga
+            setSelectedMatches(prev => prev.filter(m => !allIds.includes(m.apiId || m.externalId)))
+        } else {
+            // Adiciona os que faltam
+            const newSelections = leagueMatches.filter(m =>
+                !selectedMatches.some(s => (s.apiId || s.externalId) === (m.apiId || m.externalId))
+            )
+            setSelectedMatches(prev => [...prev, ...newSelections])
+        }
+    }
+
+    function toggleLeagueCollapse(leagueName: string) {
+        if (collapsedLeagues.includes(leagueName)) {
+            setCollapsedLeagues(prev => prev.filter(l => l !== leagueName))
+        } else {
+            setCollapsedLeagues(prev => [...prev, leagueName])
+        }
+    }
+
     async function handleSaveSelected() {
         if (selectedMatches.length === 0) return
         setSaving(true)
-
         const res = await saveSelectedMatches(selectedMatches, roundId, championshipSlug)
         setSaving(false)
 
@@ -61,15 +106,15 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
     return (
         <div className="bg-[#121212] border border-white/10 rounded-2xl p-4 md:p-6 mb-8 shadow-2xl relative overflow-hidden">
 
-            {/* BACKGROUND GLOW */}
+            {/* BACKGROUND DECORATION */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none" />
 
             <h3 className="text-lg md:text-xl font-black italic font-teko uppercase text-white mb-6 flex items-center gap-2 relative z-10">
-                <span className="text-emerald-500 text-2xl">📡</span> Buscar Jogos
+                <span className="text-emerald-500 text-2xl">📡</span> Buscar Jogos na API
             </h3>
 
-            {/* INPUTS DE BUSCA */}
-            <div className="flex flex-col md:flex-row gap-3 mb-6 relative z-10">
+            {/* BARRA DE BUSCA (DATA) */}
+            <div className="flex flex-col md:flex-row gap-3 mb-8 relative z-10">
                 <div className="relative flex-1">
                     <input
                         type="date"
@@ -88,74 +133,111 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
                 </button>
             </div>
 
-            {/* GRID DE JOGOS */}
-            {matches.length > 0 && (
-                // ADICIONEI 'pb-24' PARA O ÚLTIMO CARD NÃO FICAR ESCONDIDO ATRÁS DA BARRA FLUTUANTE
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 relative z-10 pb-24 md:pb-0">
-                    {matches.map((match: any, index: number) => {
-                        const matchId = match.apiId || match.externalId
-                        const isSelected = selectedMatches.some(m => (m.apiId || m.externalId) === matchId)
+            {/* --- LISTA AGRUPADA POR LIGAS --- */}
+            {matchesByLeague.length > 0 && (
+                <div className="space-y-6 relative z-10 pb-24 md:pb-0">
+                    {matchesByLeague.map(([leagueName, leagueMatches]) => {
+                        const isCollapsed = collapsedLeagues.includes(leagueName)
+                        const leagueLogo = leagueMatches[0].leagueLogo
 
-                        const gameDate = new Date(match.date)
-                        const timeString = gameDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                        // Verifica se todos dessa liga estão marcados
+                        const allSelected = leagueMatches.length > 0 && leagueMatches.every(m =>
+                            selectedMatches.some(s => (s.apiId || s.externalId) === (m.apiId || m.externalId))
+                        )
 
                         return (
-                            <div
-                                key={index}
-                                onClick={() => toggleMatchSelection(match)}
-                                className={`
-                                    cursor-pointer p-3 rounded-xl flex flex-col items-center justify-between group transition-all relative overflow-hidden border select-none
-                                    ${isSelected
-                                    ? "bg-emerald-900/10 border-emerald-500 shadow-[inset_0_0_20px_rgba(16,185,129,0.1)]"
-                                    : "bg-[#1a1a1a] border-white/5 active:scale-[0.98]"
-                                }
-                                `}
-                            >
-                                {/* HEADER DO CARD: LIGA E HORA */}
-                                <div className="w-full flex justify-between items-center border-b border-white/5 pb-2 mb-3">
-                                    <div className="flex items-center gap-1.5 overflow-hidden">
-                                        {match.leagueLogo && <img src={match.leagueLogo} className="w-3 h-3 object-contain opacity-70" />}
-                                        <span className="text-[9px] text-gray-500 uppercase font-bold tracking-wider truncate max-w-[120px]">
-                                            {match.leagueName || match.league}
-                                        </span>
+                            <div key={leagueName} className="bg-[#1a1a1a] border border-white/5 rounded-xl overflow-hidden">
+
+                                {/* CABEÇALHO DA LIGA */}
+                                <div className="bg-[#222] p-3 flex items-center justify-between border-b border-white/5 select-none">
+                                    <div
+                                        className="flex items-center gap-3 cursor-pointer flex-1"
+                                        onClick={() => toggleLeagueCollapse(leagueName)}
+                                    >
+                                        <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center p-1 border border-white/10">
+                                            {leagueLogo ? (
+                                                <img src={leagueLogo} alt={leagueName} className="w-full h-full object-contain" />
+                                            ) : (
+                                                <span className="text-[10px]">🏆</span>
+                                            )}
+                                        </div>
+                                        <h4 className="font-bold text-sm text-gray-200 uppercase tracking-wide flex items-center gap-2">
+                                            {leagueName}
+                                            <span className="text-[10px] text-gray-500 bg-black/40 px-1.5 py-0.5 rounded ml-1">
+                                                {leagueMatches.length}
+                                            </span>
+                                        </h4>
                                     </div>
 
-                                    <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold border ${isSelected ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-black/40 text-gray-400 border-white/10'}`}>
-                                        {isSelected && <span>✓</span>}
-                                        {timeString}
-                                    </div>
+                                    {/* Botão Check All */}
+                                    <button
+                                        onClick={() => toggleLeagueSelection(leagueMatches)}
+                                        className={`w-6 h-6 rounded border flex items-center justify-center transition-all ${allSelected ? 'bg-emerald-500 border-emerald-500 text-black' : 'border-white/20 hover:border-white/50 text-transparent'}`}
+                                        title="Selecionar todos desta liga"
+                                    >
+                                        ✓
+                                    </button>
                                 </div>
 
-                                {/* TIMES */}
-                                <div className="flex items-center justify-between w-full">
-                                    {/* MANDANTE */}
-                                    <div className="flex flex-col items-center w-[40%]">
-                                        <img src={match.homeLogo} className="w-10 h-10 mb-2 object-contain drop-shadow-md" alt="" />
-                                        <span className={`text-[10px] font-bold text-center leading-tight line-clamp-2 ${isSelected ? 'text-white' : 'text-gray-400'}`}>
-                                            {match.homeTeam}
-                                        </span>
-                                    </div>
+                                {/* LISTA DE JOGOS DA LIGA (GRID) */}
+                                {!isCollapsed && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 p-3 bg-[#161616]">
+                                        {leagueMatches.map((match: any, idx: number) => {
+                                            const matchId = match.apiId || match.externalId
+                                            const isSelected = selectedMatches.some(m => (m.apiId || m.externalId) === matchId)
+                                            const gameDate = new Date(match.date)
+                                            const timeString = gameDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
-                                    <span className={`font-black text-lg ${isSelected ? 'text-emerald-500' : 'text-gray-700'}`}>VS</span>
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => toggleMatchSelection(match)}
+                                                    className={`
+                                                        cursor-pointer p-3 rounded-lg flex items-center justify-between group transition-all border
+                                                        ${isSelected
+                                                        ? "bg-emerald-900/10 border-emerald-500/50 shadow-[inset_0_0_15px_rgba(16,185,129,0.05)]"
+                                                        : "bg-[#1f1f1f] border-white/5 hover:border-white/20"
+                                                    }
+                                                    `}
+                                                >
+                                                    {/* HORA */}
+                                                    <div className="text-[10px] font-mono font-bold text-gray-500 border-r border-white/5 pr-3 mr-3 flex flex-col items-center min-w-[40px]">
+                                                        {timeString}
+                                                        {isSelected && <span className="text-emerald-500 text-xs">✔</span>}
+                                                    </div>
 
-                                    {/* VISITANTE */}
-                                    <div className="flex flex-col items-center w-[40%]">
-                                        <img src={match.awayLogo} className="w-10 h-10 mb-2 object-contain drop-shadow-md" alt="" />
-                                        <span className={`text-[10px] font-bold text-center leading-tight line-clamp-2 ${isSelected ? 'text-white' : 'text-gray-400'}`}>
-                                            {match.awayTeam}
-                                        </span>
+                                                    {/* TIMES */}
+                                                    <div className="flex-1 flex flex-col gap-1.5">
+                                                        {/* Casa */}
+                                                        <div className="flex items-center gap-2">
+                                                            <img src={match.homeLogo} className="w-5 h-5 object-contain" alt="" />
+                                                            <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+                                                                {match.homeTeam}
+                                                            </span>
+                                                        </div>
+                                                        {/* Fora */}
+                                                        <div className="flex items-center gap-2">
+                                                            <img src={match.awayLogo} className="w-5 h-5 object-contain" alt="" />
+                                                            <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-gray-400'}`}>
+                                                                {match.awayTeam}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        })}
                                     </div>
-                                </div>
+                                )}
                             </div>
                         )
                     })}
                 </div>
             )}
 
-            {/* --- BARRA FLUTUANTE (DOCK) PARA MOBILE E DESKTOP --- */}
+            {/* --- BARRA FLUTUANTE (DOCK) --- */}
             {selectedMatches.length > 0 && (
                 <div className="fixed bottom-4 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-auto md:min-w-[400px] z-50 animate-in slide-in-from-bottom-10 fade-in duration-300">
-                    <div className="bg-[#121212]/90 backdrop-blur-xl border border-emerald-500/50 rounded-2xl p-2 pl-4 flex items-center justify-between shadow-[0_0_40px_rgba(0,0,0,0.8)]">
+                    <div className="bg-[#121212]/95 backdrop-blur-xl border border-emerald-500/50 rounded-2xl p-2 pl-4 flex items-center justify-between shadow-[0_0_40px_rgba(0,0,0,0.8)]">
 
                         <div className="flex items-center gap-3">
                             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500 text-black font-black text-sm shadow-[0_0_10px_rgba(16,185,129,0.4)]">
