@@ -6,7 +6,7 @@ import { calculatePoints } from "@/utils/scoring"
 import { getMatchesByDate, getLiveMatches } from "@/services/football-api"
 
 export async function updateRoundResultsAction(roundId: string, slug: string) {
-    console.log("🚀 [DEBUG] Iniciando atualização da rodada:", roundId)
+    console.log("🚀 [DEBUG] Iniciando atualização da rodada (CACHE ZERO):", roundId)
 
     try {
         const round = await prisma.round.findUnique({
@@ -25,45 +25,48 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
 
         let foundGames: any[] = []
 
-        // 2. BUSCAR NA API (Por Data)
+        // 2. BUSCAR NA API (Por Data) COM CACHE ZERO
         for (const date of uniqueDates) {
-            const games = await getMatchesByDate(date)
+            // AQUI ESTÁ A MÁGICA: Passamos 0 no segundo parâmetro!
+            console.log(`🔎 [API] Buscando dados FRESCOS (Sem cache) para: ${date}`)
+            const games = await getMatchesByDate(date, 0)
+
             if (games.length > 0) {
                 foundGames = [...foundGames, ...games]
             }
         }
 
-        // 3. BUSCAR AO VIVO (Garantia extra)
+        // 3. BUSCAR AO VIVO (Também ajuda se o cache da data falhar)
         const liveGames = await getLiveMatches()
         if (liveGames.length > 0) {
             foundGames = [...foundGames, ...liveGames]
         }
 
-        console.log(`📡 [DEBUG] Total de jogos encontrados na API (Mundo todo): ${foundGames.length}`)
+        console.log(`📡 [DEBUG] Total de jogos encontrados: ${foundGames.length}`)
 
         let gamesUpdatedCount = 0
 
-        // 4. ATUALIZAR NO BANCO (Cruzamento de IDs)
+        // 4. ATUALIZAR NO BANCO
         for (const apiGame of foundGames) {
-
-            // CORREÇÃO AQUI: Normalizamos para Número para o Banco de Dados
             const apiIdInt = Number(apiGame.apiId)
-
-            // Na comparação, transformamos o do banco em string para garantir match
-            // (Isso resolve o erro se um for Int e o outro String no Typescript)
             const matchInDb = round.matches.find(m => m.apiId?.toString() === apiIdInt.toString())
 
             if (matchInDb) {
-                // Traduz status
                 let ourStatus = 'SCHEDULED'
-                if (['1H', '2H', 'HT', 'ET', 'P', 'LIVE', 'BT', 'INT'].includes(apiGame.status)) ourStatus = 'LIVE'
-                if (['FT', 'AET', 'PEN'].includes(apiGame.status)) ourStatus = 'FINISHED'
-                if (['PST', 'CANC', 'ABD'].includes(apiGame.status)) ourStatus = 'SCHEDULED'
 
-                console.log(`💾 [SYNC SUCESSO] ${matchInDb.homeTeam} x ${matchInDb.awayTeam} -> ${apiGame.homeScore}x${apiGame.awayScore} (${ourStatus})`)
+                // Mapeamento de Status
+                // LIVE: 1H, 2H, HT (Intervalo), ET (Prorrogação), P (Penaltis rolando), BT (Break Time), INT (Interrompido)
+                if (['1H', '2H', 'HT', 'ET', 'P', 'LIVE', 'BT', 'INT'].includes(apiGame.status)) ourStatus = 'LIVE'
+
+                // FINISHED: FT (Full Time), AET (After Extra Time), PEN (Pênaltis Finalizado)
+                if (['FT', 'AET', 'PEN'].includes(apiGame.status)) ourStatus = 'FINISHED'
+
+                // SCHEDULED: TBD, NS, PST (Adiado), CANC (Cancelado), ABD (Abandonado)
+                if (['TBD', 'NS', 'PST', 'CANC', 'ABD', 'AWD', 'WO'].includes(apiGame.status)) ourStatus = 'SCHEDULED'
+
+                console.log(`💾 [SYNC] ${matchInDb.homeTeam} x ${matchInDb.awayTeam} -> ${apiGame.homeScore}x${apiGame.awayScore} [API: ${apiGame.status} -> DB: ${ourStatus}]`)
 
                 await prisma.match.updateMany({
-                    // Aqui usamos o Int, que é o que o seu banco espera
                     where: { apiId: apiIdInt },
                     data: {
                         homeScore: apiGame.homeScore,
@@ -75,11 +78,7 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
             }
         }
 
-        if (gamesUpdatedCount === 0) {
-            console.warn("⚠️ [AVISO] A API trouxe jogos, mas nenhum ID bateu. Verifique se os 'apiId' no banco estão corretos.")
-        }
-
-        // 5. RECALCULAR PONTOS
+        // 5. RECALCULAR PONTOS (Mantenha igual)
         const updatedRound = await prisma.round.findUnique({
             where: { id: roundId },
             include: { matches: { include: { predictions: true } } }
@@ -130,7 +129,7 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
         revalidatePath(`/campeonatos/${slug}`)
         revalidatePath(`/campeonatos/${slug}/rodada/${roundId}`)
 
-        return { success: true, message: `Sucesso! ${gamesUpdatedCount} placares sincronizados.` }
+        return { success: true, message: `Atualizado! ${gamesUpdatedCount} jogos sincronizados.` }
 
     } catch (error) {
         console.error("🔥 [ERRO CRÍTICO]:", error)

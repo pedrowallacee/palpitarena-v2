@@ -32,14 +32,13 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
         if (!cred.key) continue;
 
         try {
-            // console.log(`🔌 [API] Tentando Credencial #${index + 1}...`);
             const res = await fetch(`${cred.baseUrl}${endpoint}`, {
                 method: "GET",
                 headers: {
                     [cred.authHeader]: cred.key,
                     "x-rapidapi-host": cred.host
                 },
-                next: { revalidate: cacheDuration }
+                next: { revalidate: cacheDuration } // <--- O SEGREDO ESTÁ AQUI
             });
 
             const data = await res.json();
@@ -59,9 +58,8 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
     return null;
 }
 
-// --- FUNÇÕES DE TIMES (Mantenha igual) ---
+// --- FUNÇÕES DE TIMES ---
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
-    // Tenta 2025, se não der tenta 2024
     const seasons = [2025, 2024];
     for (const season of seasons) {
         const response = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
@@ -76,19 +74,15 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
     return [];
 }
 
-// --- AQUI ESTAVA O PROBLEMA: REMOVIDO O FILTRO DE LIGAS ---
-export async function getMatchesByDate(date: string): Promise<any[]> {
-    // Pede TUDO da data
-    const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, 300);
+// --- FUNÇÃO CORRIGIDA: Aceita cacheTime ---
+export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
+    // Passamos o cacheTime dinâmico. Se for 0, ele busca na hora!
+    const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
 
     if (!response) return [];
 
-    // NÃO FILTRAMOS MAIS NADA!
-    // Se a API mandou, a gente entrega pro sistema.
-    // A filtragem real acontece depois, comparando com os IDs que você já salvou no banco.
-
     return response.map((item: any) => ({
-        apiId: item.fixture.id, // Mantém como number ou string, tratamos depois
+        apiId: item.fixture.id,
         homeTeam: item.teams.home.name,
         awayTeam: item.teams.away.name,
         homeLogo: item.teams.home.logo,
@@ -103,7 +97,7 @@ export async function getMatchesByDate(date: string): Promise<any[]> {
 }
 
 export async function getLiveMatches(): Promise<any[]> {
-    const response = await fetchAPI(`/fixtures?live=all`, 0);
+    const response = await fetchAPI(`/fixtures?live=all`, 0); // Live é sempre 0 cache
     if (!response) return [];
 
     return response.map((item: any) => ({
