@@ -1,211 +1,218 @@
 import { prisma } from "@/lib/prisma"
 import { cookies } from "next/headers"
-import { notFound, redirect } from "next/navigation"
+import { redirect } from "next/navigation"
 import Link from "next/link"
 import { InviteButton } from "@/components/invite-button"
-import { DeleteChampionshipButton } from "@/components/delete-championship-button"
-import { DrawGroupsButton } from "@/components/admin/draw-button"
-import { GroupsViewer } from "@/components/groups-viewer"
+import { InternalNavbar } from "@/components/internal-navbar"
+import { Leaderboard } from "@/components/leaderboard"
 
-// Tipagem para Next.js 15
-export default async function ChampionshipDashboardPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ChampionshipHub({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
-
-    // 1. Verificar usuário
     const cookieStore = await cookies()
     const userId = cookieStore.get("palpita_session")?.value
+
     if (!userId) redirect("/login")
 
-    // 2. Buscar o Campeonato e suas Rodadas
+    // 1. BUSCAR O USUÁRIO LOGADO (Para saber se é ADMIN)
+    const currentUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true } // Pegamos o ID e a Role (ADMIN ou USER)
+    })
+
+    if (!currentUser) redirect("/login")
+
+    // 2. BUSCAR O CAMPEONATO
     const championship = await prisma.championship.findUnique({
         where: { slug },
         include: {
             owner: true,
-            rounds: {
-                orderBy: { createdAt: 'desc' } // Rodadas novas primeiro
+            rounds: { orderBy: { createdAt: 'desc' } },
+            participants: {
+                orderBy: { points: 'desc' },
+                include: { user: true }
             }
         }
     })
 
-    if (!championship) return notFound()
+    if (!championship) return <div className="p-10 text-center text-white">Campeonato não encontrado.</div>
 
-    // 3. Lógica de Admin e Rodada Ativa
+    // 3. LÓGICA DE PERMISSÃO (CORRIGIDA)
+    // Você pode gerenciar se: For o Dono OU se for ADMIN Geral
     const isOwner = championship.ownerId === userId
+    const isAdmin = currentUser.role === 'ADMIN'
+    const canManage = isOwner || isAdmin
 
-    // Pega a rodada mais recente para destacar no card de "JOGAR"
-    const latestRound = championship.rounds[0];
-    // Verifica status compatível com o Enum (OPEN) ou lógica antiga (AGUARDANDO)
-    const hasOpenRound = latestRound?.status === 'OPEN';
+    const amIParticipating = championship.participants.some(p => p.userId === userId)
 
     return (
-        <div className="min-h-screen bg-[#0f0f0f] text-white font-sans selection:bg-[#a3e635] selection:text-black">
+        <div className="min-h-screen bg-[#050505] text-white pb-20 font-sans selection:bg-emerald-500 selection:text-black">
+            <InternalNavbar />
 
-            {/* HEADER */}
-            <header className="border-b border-white/10 bg-[#0f0f0f]/95 backdrop-blur-md sticky top-0 z-20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link href="/dashboard" className="text-gray-400 hover:text-white transition-colors">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-                        </Link>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold italic tracking-wide font-['Teko'] uppercase text-white">
-                                {championship.name}
-                            </h1>
-                            <p className="text-xs text-gray-500 font-sans hidden md:block">
-                                Organizado por <span className="text-[#a3e635]">{championship.owner.name}</span>
-                            </p>
-                        </div>
+            {/* --- HERO SECTION --- */}
+            <div className="relative w-full min-h-[400px] flex flex-col items-center justify-center text-center p-6 border-b border-white/5 overflow-hidden">
+
+                <div
+                    className="absolute inset-0 bg-cover bg-center opacity-40 blur-sm"
+                    style={{ backgroundImage: "url('https://img.freepik.com/fotos-premium/trofeu-de-ouro-e-faixas-em-fundo-azul-conceito-de-negocios-e-competicao_687463-8126.jpg?semt=ais_hybrid&w=740&q=80')" }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#050505]/80 via-[#050505]/60 to-[#050505]" />
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+
+                <div className="relative z-10 w-full max-w-4xl flex flex-col items-center animate-in zoom-in duration-500">
+
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 border border-white/10 backdrop-blur-md mb-6">
+                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+                            {championship.participants.length} / {championship.maxParticipants} Treinadores
+                        </span>
                     </div>
 
-                    <div className="hidden md:block">
-                        <InviteButton slug={slug} />
+                    <h1 className="text-6xl md:text-8xl font-black italic font-teko text-white uppercase leading-[0.85] mb-6 drop-shadow-2xl">
+                        {championship.name}
+                    </h1>
+
+                    <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6 bg-white/5 backdrop-blur-md border border-white/10 p-2 md:p-3 rounded-2xl shadow-2xl">
+
+                        <div className="flex flex-col items-center justify-center bg-[#0a0a0a] rounded-xl px-8 py-3 border border-white/5 relative group cursor-pointer overflow-hidden">
+                            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+                            <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest mb-0.5">Código de Acesso</span>
+                            <span className="text-3xl font-black font-mono text-white tracking-widest group-hover:text-emerald-400 transition-colors select-all">
+                                {championship.code}
+                            </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 px-2">
+                            {!amIParticipating ? (
+                                <Link
+                                    href={`/campeonatos/${slug}/escolher-time`}
+                                    className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-wide rounded-lg shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:shadow-[0_0_30px_rgba(16,185,129,0.6)] transition-all transform hover:scale-105 flex items-center gap-2"
+                                >
+                                    ⚽ Entrar em Campo
+                                </Link>
+                            ) : (
+                                <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-400 text-xs font-bold uppercase tracking-wide flex items-center gap-2">
+                                    <span className="text-lg">✅</span>
+                                    Inscrito
+                                </div>
+                            )}
+
+                            <InviteButton slug={championship.slug} />
+
+                            {/* SE FOR DONO OU ADMIN, MOSTRA O BOTÃO DE AJUSTES */}
+                            {canManage && (
+                                <Link href={`/campeonatos/${slug}/editar`} className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-gray-400 hover:text-white transition-all" title="Configurações da Liga">
+                                    ⚙️
+                                </Link>
+                            )}
+                        </div>
                     </div>
                 </div>
-            </header>
+            </div>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <main className="max-w-7xl mx-auto px-4 md:px-6 -mt-8 relative z-20 grid grid-cols-1 lg:grid-cols-3 gap-8">
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* COLUNA ESQUERDA: RODADAS */}
+                <div className="lg:col-span-2 space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-black italic font-teko uppercase text-white flex items-center gap-2 drop-shadow-md">
+                            <span className="text-emerald-500 text-3xl">📅</span> Rodadas & Jogos
+                        </h2>
 
-                    {/* === COLUNA ESQUERDA (JOGADOR) === */}
-                    <div className="lg:col-span-2 space-y-8">
-
-                        {/* 1. CARD DE AÇÃO (JOGAR) */}
-                        <div className="relative group">
-                            <div className="absolute -inset-0.5 bg-gradient-to-r from-[#a3e635] to-[#15803d] rounded-2xl opacity-50 group-hover:opacity-100 transition duration-500 blur"></div>
-                            <div className="relative bg-[#1a1a1a] rounded-xl p-6 md:p-8 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6">
-
-                                <div className="flex-1 text-center md:text-left">
-                                    {hasOpenRound ? (
-                                        <>
-                                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#a3e635]/10 text-[#a3e635] text-xs font-bold mb-3 border border-[#a3e635]/20 animate-pulse">
-                                                <span className="w-2 h-2 rounded-full bg-[#a3e635]"></span>
-                                                RODADA ABERTA
-                                            </div>
-                                            <h2 className="text-3xl font-bold font-['Teko'] mb-2">
-                                                {latestRound?.name}
-                                            </h2>
-                                            <p className="text-gray-400 text-sm mb-0">
-                                                Faça seus palpites antes que o prazo encerre!
-                                            </p>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-700/30 text-gray-400 text-xs font-bold mb-3 border border-white/10">
-                                                <span className="w-2 h-2 rounded-full bg-gray-500"></span>
-                                                AGUARDANDO
-                                            </div>
-                                            <h2 className="text-3xl font-bold font-['Teko'] mb-2 text-gray-300">
-                                                Sem rodada ativa
-                                            </h2>
-                                            <p className="text-gray-500 text-sm mb-0">
-                                                Aguarde o organizador liberar os próximos jogos.
-                                            </p>
-                                        </>
-                                    )}
-                                </div>
-
-                                {hasOpenRound ? (
-                                    <Link
-                                        href={`/campeonatos/${slug}/rodada`}
-                                        className="whitespace-nowrap px-8 py-4 bg-[#a3e635] hover:bg-[#8cc629] text-black font-black uppercase tracking-wider rounded-lg transition-transform transform hover:-translate-y-1 shadow-lg shadow-[#a3e635]/20 flex items-center gap-2"
-                                    >
-                                        Fazer Palpites <span className="text-xl">➜</span>
-                                    </Link>
-                                ) : (
-                                    <button disabled className="whitespace-nowrap px-8 py-4 bg-white/5 text-gray-500 font-bold uppercase tracking-wider rounded-lg cursor-not-allowed border border-white/5">
-                                        Em breve
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* 2. TABELA DE CLASSIFICAÇÃO (GRUPOS) - NOVO! */}
-                        <div>
-                            <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
-                                <h3 className="text-xl font-['Teko'] font-bold text-white uppercase">Classificação</h3>
-                                <span className="text-xs text-gray-500 bg-white/5 px-2 py-1 rounded">Fase de Grupos</span>
-                            </div>
-
-                            {/* Componente que renderiza as tabelas A, B, C... */}
-                            <GroupsViewer championshipId={championship.id} />
-                        </div>
-
-                        {/* 3. HISTÓRICO */}
-                        <div>
-                            <h3 className="text-xl font-['Teko'] font-bold text-white mb-4 mt-8 text-gray-400">HISTÓRICO</h3>
-                            <div className="space-y-3">
-                                {championship.rounds.length > 0 ? (
-                                    championship.rounds.map((round) => (
-                                        <div key={round.id} className="flex items-center justify-between p-4 bg-[#151515] border border-white/5 rounded-lg hover:border-white/10 transition-colors">
-                                            <div>
-                                                <h4 className="font-bold text-gray-200">{round.name}</h4>
-                                                <span className="text-xs text-gray-500">
-                                                    {new Date(round.deadline).toLocaleDateString('pt-BR')} • {round.status}
-                                                </span>
-                                            </div>
-                                            <Link href={`/campeonatos/${slug}/rodada/${round.id}`} className="text-sm text-[#a3e635] hover:underline">
-                                                Ver Detalhes
-                                            </Link>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <p className="text-gray-600 text-sm italic">Nenhum histórico disponível.</p>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* === COLUNA DIREITA (ADMIN) === */}
-                    <div className="lg:col-span-1">
-                        {isOwner && (
-                            <div className="bg-[#1a1a1a] rounded-xl border border-white/10 p-6 sticky top-24">
-                                <div className="flex items-center gap-2 mb-6 border-b border-white/10 pb-4">
-                                    <div className="bg-[#a3e635] p-1.5 rounded text-black">
-                                        {/* Ícone Admin */}
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                    </div>
-                                    <h3 className="font-bold text-white uppercase tracking-wider font-['Teko'] text-xl">
-                                        Painel do Dono
-                                    </h3>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {/* BOTÃO DE SORTEIO (Só aparece na fase de registro) - NOVO! */}
-                                    {championship.status === 'REGISTRATION' && (
-                                        <div className="mb-4 pb-4 border-b border-white/10">
-                                            <p className="text-xs text-gray-400 mb-2">Configure o torneio:</p>
-                                            <DrawGroupsButton championshipId={championship.id} />
-                                        </div>
-                                    )}
-
-                                    <Link
-                                        href={`/campeonatos/${slug}/nova-rodada`}
-                                        className="block w-full py-3 px-4 bg-white/5 hover:bg-[#a3e635] hover:text-black border border-white/10 rounded-lg text-sm font-medium transition-all group flex items-center justify-between"
-                                    >
-                                        <span>+ Criar Nova Rodada</span>
-                                    </Link>
-
-                                    <Link
-                                        href={`/campeonatos/${slug}/editar`}
-                                        className="block w-full py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-300 transition-colors flex items-center justify-between"
-                                    >
-                                        <span>⚙️ Configurações</span>
-                                    </Link>
-
-                                    <div className="pt-2">
-                                        <InviteButton slug={slug} />
-                                    </div>
-
-                                    <div className="pt-4 mt-4 border-t border-white/10">
-                                        <DeleteChampionshipButton id={championship.id} name={championship.name} />
-                                    </div>
-                                </div>
-                            </div>
+                        {/* BOTÃO DE CRIAR RODADA (Agora visível para ADMIN também) */}
+                        {canManage && (
+                            <Link
+                                href={`/campeonatos/${slug}/nova-rodada`}
+                                className="bg-emerald-500 hover:bg-emerald-400 text-black font-black text-[10px] px-4 py-2 rounded-lg uppercase tracking-widest transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center gap-2"
+                            >
+                                + Nova Rodada
+                            </Link>
                         )}
                     </div>
 
+                    <div className="grid gap-4">
+                        {championship.rounds.length === 0 ? (
+                            // EMPTY STATE
+                            <div className="bg-white/5 backdrop-blur-md border border-white/10 border-dashed rounded-2xl p-12 text-center relative overflow-hidden group">
+                                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="relative z-10">
+                                    <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl text-gray-600 group-hover:scale-110 transition-transform">
+                                        🗓️
+                                    </div>
+                                    <h3 className="text-xl font-bold text-white mb-2">Nenhuma rodada definida</h3>
+                                    <p className="text-gray-400 text-sm max-w-sm mx-auto">
+                                        {canManage
+                                            ? 'Você precisa criar a primeira rodada para liberar os palpites.'
+                                            : 'Aguarde o organizador liberar a tabela.'}
+                                    </p>
+
+                                    {/* BOTÃO NO EMPTY STATE TAMBÉM */}
+                                    {canManage && (
+                                        <Link href={`/campeonatos/${slug}/nova-rodada`} className="inline-block mt-6 px-6 py-3 bg-white/10 hover:bg-emerald-500 hover:text-black border border-white/10 hover:border-emerald-500 rounded-lg text-white font-bold text-xs uppercase tracking-widest transition-all">
+                                            Criar Rodada #1 Agora
+                                        </Link>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            // LISTA DE RODADAS
+                            championship.rounds.map(round => {
+                                const isOpen = round.status === 'OPEN'
+                                return (
+                                    <Link key={round.id} href={`/campeonatos/${slug}/rodada/${round.id}`}>
+                                        <div className="bg-white/5 backdrop-blur-md border border-white/10 hover:border-emerald-500/50 p-5 rounded-2xl transition-all group relative overflow-hidden shadow-lg hover:shadow-emerald-900/10">
+                                            <div className={`absolute left-0 top-0 bottom-0 w-1 ${isOpen ? 'bg-emerald-500' : 'bg-gray-600'}`} />
+
+                                            <div className="flex justify-between items-center pl-4">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <h3 className="text-2xl font-black font-teko uppercase text-white group-hover:text-emerald-400 transition-colors">
+                                                            {round.name}
+                                                        </h3>
+                                                        {isOpen && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                                                    </div>
+                                                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide flex items-center gap-2">
+                                                        <span>⏰ Encerra: {new Date(round.deadline).toLocaleDateString()}</span>
+                                                    </p>
+                                                </div>
+
+                                                <div className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest border backdrop-blur-md ${
+                                                    isOpen ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                                                        'bg-gray-800/50 border-gray-700/50 text-gray-500'
+                                                }`}>
+                                                    {isOpen ? 'Aberto' : round.status}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Link>
+                                )
+                            })
+                        )}
+                    </div>
                 </div>
+
+                {/* COLUNA DIREITA: CLASSIFICAÇÃO */}
+                <div className="mb-10 lg:mb-0">
+                    <div className="bg-[#121212]/90 backdrop-blur-xl border border-white/10 rounded-2xl lg:sticky lg:top-24 shadow-2xl overflow-hidden">
+                        <div className="p-5 border-b border-white/10 bg-white/5 flex items-center justify-between">
+                            <h2 className="text-2xl font-black italic font-teko uppercase text-white flex items-center gap-2">
+                                🏆 Classificação
+                            </h2>
+                            <span className="text-[10px] bg-black/40 border border-white/10 px-2 py-1 rounded text-gray-300 uppercase font-bold tracking-wider">
+                                {championship.format === 'KNOCKOUT' ? 'Mata-Mata' : championship.format === 'GROUPS' ? 'Grupos' : 'Pontos'}
+                            </span>
+                        </div>
+
+                        {championship.participants.length === 0 ? (
+                            <div className="p-8 text-center">
+                                <p className="text-sm text-gray-500 mb-2">Aguardando jogadores...</p>
+                                <div className="w-8 h-1 bg-white/10 mx-auto rounded-full" />
+                            </div>
+                        ) : (
+                            <Leaderboard participants={championship.participants} />
+                        )}
+                    </div>
+                </div>
+
             </main>
         </div>
     )

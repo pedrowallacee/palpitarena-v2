@@ -1,65 +1,92 @@
 import { prisma } from "@/lib/prisma"
-import { notFound, redirect } from "next/navigation"
-import { getTeamsByLeague } from "@/services/football-api" // Sua função de API
+import { getTeamsByLeague } from "@/services/football-api"
 import { TeamSelector } from "@/components/team-selector"
+import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 
-export default async function ChooseTeamPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function EscolherTimePage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
-
-    // 1. Auth Check
     const cookieStore = await cookies()
     const userId = cookieStore.get("palpita_session")?.value
+
     if (!userId) redirect("/login")
 
-    // 2. Busca Campeonato e quem já está nele
+    // 1. Busca dados do campeonato E OS PARTICIPANTES JÁ CADASTRADOS
     const championship = await prisma.championship.findUnique({
         where: { slug },
-        include: {
+        select: {
+            id: true,
+            name: true,
+            apiLeagueId: true,
             participants: {
-                include: { user: true } // Precisamos do nome do usuário
+                select: {
+                    teamApiId: true,
+                    user: { select: { name: true } }
+                }
             }
+        },
+    })
+
+    if (!championship) return <div>Campeonato não encontrado</div>
+
+    // 2. Verifica se EU já participo
+    const existingParticipation = await prisma.championshipParticipant.findFirst({
+        where: {
+            userId: userId,
+            championshipId: championship.id
         }
     })
 
-    if (!championship || !championship.apiLeagueId) return notFound()
-
-    // 3. Verifica se usuário já está participando (se sim, redireciona pro dashboard)
-    const alreadyJoined = championship.participants.some(p => p.userId === userId)
-    if (alreadyJoined) {
+    if (existingParticipation) {
         redirect(`/campeonatos/${slug}`)
     }
 
-    // 4. Busca TODOS os times da liga na API Externa
-    const allTeams = await getTeamsByLeague(championship.apiLeagueId)
+    // 3. Monta um "Mapa" de times ocupados
+    // Ex: { 40: "Pedro", 50: "João" }
+    const takenTeamsMap: Record<number, string> = {}
 
-    // 5. Mapeia quem já pegou qual time
-    // Cria uma lista simples com { teamApiId: 127, ownerName: "Pedro W." }
-    const takenTeams = championship.participants
-        .filter(p => p.teamApiId !== null)
-        .map(p => ({
-            teamApiId: p.teamApiId,
-            ownerName: p.user.name.split(' ').slice(0, 2).join(' ') // Pega Primeiro + Segundo nome
-        }))
+    championship.participants.forEach(p => {
+        if (p.teamApiId) {
+            // Se o user for null (time abandonado), mostramos "Sem Técnico"
+            takenTeamsMap[p.teamApiId] = p.user?.name || "Abandonado"
+        }
+    })
+
+    // 4. Busca times da API
+    const leagueId = championship.apiLeagueId || 71
+    console.log(`🔍 Buscando times para Liga ID: ${leagueId}`)
+    const teams = await getTeamsByLeague(leagueId)
 
     return (
-        <div className="min-h-screen bg-[#0f0f0f] text-white p-6">
-            <header className="max-w-6xl mx-auto mb-8 text-center md:text-left">
-                <h1 className="text-4xl font-bold font-['Teko'] uppercase">Escolha seu Time</h1>
-                <p className="text-gray-400">
-                    Selecione o clube que você representará na
-                    <span className="text-[#a3e635] font-bold ml-1">{championship.name}</span>.
-                </p>
-                <p className="text-xs text-gray-500 mt-2">Times cinzas já foram escolhidos por outros treinadores.</p>
-            </header>
+        <div className="min-h-screen bg-[#0f0f0f] text-white p-6 pb-32">
 
-            <main className="max-w-6xl mx-auto">
+            <div className="max-w-4xl mx-auto text-center mb-8 animate-in slide-in-from-top-4">
+                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mb-2">
+                    {championship.name}
+                </p>
+                <h1 className="text-5xl md:text-6xl font-black italic font-teko text-white uppercase leading-none">
+                    ESCOLHA SEU <span className="text-emerald-500">ESCUDO</span>
+                </h1>
+
+                {teams.length === 0 ? (
+                    <div className="mt-8 p-6 bg-red-500/10 border border-red-500/20 rounded-xl">
+                        <h3 className="text-xl font-bold text-red-400 mb-2">Nenhum time encontrado! 😕</h3>
+                        <p className="text-sm text-gray-300">Verifique se a temporada da API está correta.</p>
+                    </div>
+                ) : (
+                    <p className="text-gray-500 mt-2 max-w-lg mx-auto">
+                        Os times em cinza já foram escolhidos por outros treinadores.
+                    </p>
+                )}
+            </div>
+
+            {teams.length > 0 && (
                 <TeamSelector
+                    teams={teams}
                     championshipId={championship.id}
-                    availableTeams={allTeams}
-                    takenTeams={takenTeams}
+                    takenTeams={takenTeamsMap} // PASSANDO A LISTA DE OCUPADOS
                 />
-            </main>
+            )}
         </div>
     )
 }

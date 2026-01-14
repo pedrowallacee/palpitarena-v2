@@ -5,57 +5,81 @@ import { revalidatePath } from "next/cache"
 
 export async function drawGroupsAction(championshipId: string) {
     try {
-        // 1. Busca todos os participantes do campeonato
-        const participants = await prisma.championshipParticipant.findMany({
-            where: { championshipId },
-            select: { id: true } // Só precisamos do ID para atualizar
+        const championship = await prisma.championship.findUnique({
+            where: { id: championshipId },
+            include: { participants: true }
         })
 
-        if (participants.length < 4) {
-            return { success: false, message: "Mínimo de 4 participantes para sortear!" }
-        }
+        if (!championship) return { success: false, message: "Campeonato não encontrado." }
 
-        // 2. Algoritmo de Embaralhamento (Fisher-Yates Shuffle)
-        // Isso garante que o sorteio seja justo e aleatório
-        const shuffled = [...participants]
-        for (let i = shuffled.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
+        const players = championship.participants
 
-        // 3. Distribuição nos Grupos (A, B, C, D...)
-        // Vamos assumir grupos de 4 pessoas por padrão
-        const groupNames = ["A", "B", "C", "D", "E", "F", "G", "H"]
-        const updates = []
+        // 1. EMBARALHAR (Shuffle) - Para o sorteio ser aleatório
+        const shuffled = players.sort(() => Math.random() - 0.5)
 
-        // Define quantos grupos teremos
-        const totalGroups = Math.ceil(shuffled.length / 4)
+        // LÓGICA 1: FASE DE GRUPOS (Estilo Copa do Mundo)
+        if (championship.format === 'GROUPS') {
+            const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+            const playersPerGroup = 4 // Padrão FIFA
 
-        for (let i = 0; i < shuffled.length; i++) {
-            // Calcula o índice do grupo: 0, 1, 2, 3...
-            const groupIndex = i % totalGroups
-            const groupName = groupNames[groupIndex]
+            // Distribui os jogadores
+            for (let i = 0; i < shuffled.length; i++) {
+                const groupIndex = Math.floor(i / playersPerGroup)
+                const groupName = groupNames[groupIndex] || 'Z' // Fallback se tiver gente demais
 
-            // Prepara a atualização no banco
-            updates.push(
-                prisma.championshipParticipant.update({
+                await prisma.championshipParticipant.update({
                     where: { id: shuffled[i].id },
                     data: { group: groupName }
                 })
-            )
+            }
+
+            // Muda status para Fase de Grupos
+            await prisma.championship.update({
+                where: { id: championshipId },
+                data: { status: 'GROUP_STAGE' }
+            })
+
+            revalidatePath(`/campeonatos/${championship.slug}`)
+            return { success: true, message: "🎲 Grupos sorteados com sucesso!" }
         }
 
-        // 4. Executa tudo numa transação (ou tudo dá certo, ou nada muda)
-        await prisma.$transaction(updates)
+        // LÓGICA 2: MATA-MATA (Cria Duelos Iniciais)
+        if (championship.format === 'KNOCKOUT') {
+            // Cria a 1ª Rodada de Mata-mata
+            const round = await prisma.round.create({
+                data: {
+                    championshipId,
+                    name: "Rodada 1 - Eliminatória",
+                    deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // +7 dias
+                    type: 'ROUND_OF_16', // Exemplo genérico
+                    status: 'OPEN'
+                }
+            })
 
-        // 5. Atualiza o status do campeonato para "Fase de Grupos"
-        await prisma.championship.update({
-            where: { id: championshipId },
-            data: { status: 'GROUP_STAGE' }
-        })
+            // Cria os duelos (1 vs 2, 3 vs 4...)
+            for (let i = 0; i < shuffled.length; i += 2) {
+                if (i + 1 < shuffled.length) {
+                    await prisma.duel.create({
+                        data: {
+                            roundId: round.id,
+                            homeParticipantId: shuffled[i].id,
+                            awayParticipantId: shuffled[i + 1].id,
+                            status: 'SCHEDULED'
+                        }
+                    })
+                }
+            }
 
-        revalidatePath(`/campeonatos/[slug]`)
-        return { success: true, message: "Grupos sorteados com sucesso!" }
+            await prisma.championship.update({
+                where: { id: championshipId },
+                data: { status: 'KNOCKOUT' }
+            })
+
+            revalidatePath(`/campeonatos/${championship.slug}`)
+            return { success: true, message: "🥊 Chaves definidas e 1ª Rodada criada!" }
+        }
+
+        return { success: false, message: "Formato de pontos corridos não precisa de sorteio." }
 
     } catch (error) {
         console.error(error)

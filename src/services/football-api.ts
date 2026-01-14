@@ -1,6 +1,5 @@
 // src/services/football-api.ts
 
-// Configuração das Credenciais (Rotação)
 const CREDENTIALS = [
     {
         key: process.env.FOOTBALL_KEY_1,
@@ -22,23 +21,9 @@ const CREDENTIALS = [
     }
 ];
 
-const CURRENT_SEASON = 2025;
-
-// Lista de IDs de Ligas Suportadas
+// IDs das Ligas Suportadas
 const SUPPORTED_LEAGUE_IDS = [
-    71, 72, // Brasileirão A e B
-    13, // Libertadores
-    39, 40, // Premier League e Championship
-    140, // La Liga
-    135, // Serie A
-    78, // Bundesliga
-    61, // Ligue 1
-    94, // Primeira Liga
-    88, // Eredivisie
-    144, // Jupiler Pro
-    253, // MLS
-    307, // Saudi Pro League
-    2, // Champions League
+    71, 72, 13, 39, 40, 140, 135, 78, 61, 94, 88, 144, 253, 307, 2
 ];
 
 export type APITeam = {
@@ -47,26 +32,12 @@ export type APITeam = {
     logo: string
 }
 
-export type APILeague = {
-    id: number
-    name: string
-    logo: string
-    country: string
-}
-
-/**
- * Função Inteligente de Fetch com Rotação de Chaves (Failover)
- * Tenta a primeira chave, se falhar, tenta a próxima.
- */
 async function fetchAPI(endpoint: string, cacheDuration = 3600) {
-    let lastError = null;
-
-    // Loop pelas credenciais disponíveis
     for (const [index, cred] of CREDENTIALS.entries()) {
-        if (!cred.key) continue; // Pula se não tiver chave configurada
+        if (!cred.key) continue;
 
         try {
-            console.log(`📡 Tentando API com credencial #${index + 1}...`);
+            console.log(`🔌 [API] Tentando Credencial #${index + 1} na rota: ${endpoint}`);
 
             const res = await fetch(`${cred.baseUrl}${endpoint}`, {
                 method: "GET",
@@ -77,72 +48,97 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
                 next: { revalidate: cacheDuration }
             });
 
-            // Se a resposta for OK, processamos
-            if (res.ok) {
-                const data = await res.json();
+            const data = await res.json();
 
-                // Verifica se a API retornou erros lógicos (ex: limite diário atingido)
-                if (data.errors && Object.keys(data.errors).length > 0) {
-                    console.warn(`⚠️ Credencial #${index + 1} retornou erro da API:`, data.errors);
-                    // Não damos throw aqui, deixamos o loop continuar para a próxima chave
-                    lastError = data.errors;
-                    continue;
-                }
-
-                // SUCESSO! Retorna os dados e para o loop
-                return data.response;
-            } else {
-                console.warn(`⚠️ Credencial #${index + 1} falhou com status: ${res.status}`);
+            if (data.errors && Object.keys(data.errors).length > 0) {
+                // Se for erro de plano, nem tenta logar como erro crítico, apenas avisa
+                console.warn(`⚠️ [API RESTRIÇÃO] Credencial #${index + 1}:`, JSON.stringify(data.errors));
+                continue;
             }
 
+            if (!data.response) {
+                continue;
+            }
+
+            return data.response;
+
         } catch (error) {
-            console.error(`❌ Erro de conexão com credencial #${index + 1}:`, error);
-            lastError = error;
+            console.error(`🔥 [API CRASH] Erro na credencial #${index + 1}:`, error);
         }
     }
-
-    // Se chegou aqui, todas as chaves falharam
-    console.error("🔥 TODAS as chaves de API falharam.", lastError);
     return null;
 }
 
-// --- MÉTODOS PÚBLICOS (Mantivemos a mesma assinatura) ---
+// NOVA FUNÇÃO: Tenta extrair times dos jogos (Burlar restrição de temporada)
+async function getTeamsFromFixtures(leagueId: number, season: number): Promise<APITeam[]> {
+    console.log(`🕵️ TÁTICA BACKDOOR: Tentando extrair times dos jogos da temporada ${season}...`);
 
-export async function getLeagues(): Promise<APILeague[]> {
-    // Mantemos estático para economizar requisições
-    return [
-        { id: 71, name: "Brasileirão Série A", country: "Brasil", logo: "https://media.api-sports.io/football/leagues/71.png" },
-        { id: 72, name: "Brasileirão Série B", country: "Brasil", logo: "https://media.api-sports.io/football/leagues/72.png" },
-        { id: 13, name: "Copa Libertadores", country: "Mundo", logo: "https://media.api-sports.io/football/leagues/13.png" },
-        { id: 39, name: "Premier League", country: "Inglaterra", logo: "https://media.api-sports.io/football/leagues/39.png" },
-        { id: 40, name: "Championship", country: "Inglaterra", logo: "https://media.api-sports.io/football/leagues/40.png" },
-        { id: 140, name: "La Liga", country: "Espanha", logo: "https://media.api-sports.io/football/leagues/140.png" },
-        { id: 135, name: "Serie A", country: "Itália", logo: "https://media.api-sports.io/football/leagues/135.png" },
-        { id: 78, name: "Bundesliga", country: "Alemanha", logo: "https://media.api-sports.io/football/leagues/78.png" },
-        { id: 61, name: "Ligue 1", country: "França", logo: "https://media.api-sports.io/football/leagues/61.png" },
-        { id: 94, name: "Primeira Liga", country: "Portugal", logo: "https://media.api-sports.io/football/leagues/94.png" },
-        { id: 88, name: "Eredivisie", country: "Holanda", logo: "https://media.api-sports.io/football/leagues/88.png" },
-        { id: 144, name: "Jupiler Pro League", country: "Bélgica", logo: "https://media.api-sports.io/football/leagues/144.png" },
-        { id: 253, name: "Major League Soccer", country: "EUA", logo: "https://media.api-sports.io/football/leagues/253.png" },
-        { id: 307, name: "Saudi Pro League", country: "Arábia Saudita", logo: "https://media.api-sports.io/football/leagues/307.png" },
-        { id: 2, name: "Champions League", country: "Europa", logo: "https://media.api-sports.io/football/leagues/2.png" },
-    ];
+    // Pede os próximos 50 jogos (geralmente cobre todos os times da liga)
+    const matches = await fetchAPI(`/fixtures?league=${leagueId}&season=${season}&next=50`, 3600);
+
+    if (!matches || matches.length === 0) return [];
+
+    const uniqueTeams = new Map<number, APITeam>();
+
+    matches.forEach((match: any) => {
+        // Adiciona time da casa
+        if (!uniqueTeams.has(match.teams.home.id)) {
+            uniqueTeams.set(match.teams.home.id, {
+                id: match.teams.home.id,
+                name: match.teams.home.name,
+                logo: match.teams.home.logo
+            });
+        }
+        // Adiciona time visitante
+        if (!uniqueTeams.has(match.teams.away.id)) {
+            uniqueTeams.set(match.teams.away.id, {
+                id: match.teams.away.id,
+                name: match.teams.away.name,
+                logo: match.teams.away.logo
+            });
+        }
+    });
+
+    const teams = Array.from(uniqueTeams.values());
+    console.log(`✅ BACKDOOR SUCESSO: ${teams.length} times atuais extraídos dos jogos!`);
+    return teams;
 }
 
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
-    const response = await fetchAPI(`/teams?league=${leagueId}&season=${CURRENT_SEASON}`, 86400); // Cache 24h
+    // 1. TENTA A TEMPORADA ATUAL (2025/2026) USANDO O TRUQUE DOS JOGOS
+    // Isso deve retornar os times REAIS de hoje (Premier League 25/26)
+    const currentTeams = await getTeamsFromFixtures(leagueId, 2025);
 
-    if (!response) return [];
+    if (currentTeams.length > 10) { // Se achou um número razoável de times
+        return currentTeams.sort((a, b) => a.name.localeCompare(b.name));
+    }
 
-    return response.map((item: any) => ({
-        id: item.team.id,
-        name: item.team.name,
-        logo: item.team.logo
-    }));
+    // 2. SE FALHAR, TENTA O MÉTODO TRADICIONAL (LISTA)
+    // Se a API bloquear até os jogos de 2025, voltamos para 2024
+    console.warn("⚠️ Backdoor falhou. Tentando método tradicional (Listas)...");
+
+    const seasonsToTry = [2025, 2024]; // Tenta lista oficial 2025, se não der, vai pra 2024
+
+    for (const season of seasonsToTry) {
+        console.log(`📡 Buscando lista oficial da Liga ${leagueId} (Temporada ${season})...`);
+        const response = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
+
+        if (response && response.length > 0) {
+            console.log(`✅ Lista oficial obtida para ${season}.`);
+            return response.map((item: any) => ({
+                id: item.team.id,
+                name: item.team.name,
+                logo: item.team.logo
+            }));
+        }
+    }
+
+    console.error(`❌ FALHA TOTAL: Nenhum time encontrado.`);
+    return [];
 }
 
 export async function getMatchesByDate(date: string): Promise<any[]> {
-    const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, 300); // Cache 5 min
+    const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, 300);
 
     if (!response) return [];
 
@@ -154,11 +150,14 @@ export async function getMatchesByDate(date: string): Promise<any[]> {
         apiId: item.fixture.id,
         homeTeam: item.teams.home.name,
         awayTeam: item.teams.away.name,
-        homeTeamLogo: item.teams.home.logo,
-        awayTeamLogo: item.teams.away.logo,
+        homeLogo: item.teams.home.logo,
+        awayLogo: item.teams.away.logo,
         date: item.fixture.date,
         time: new Date(item.fixture.date).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }),
         leagueName: item.league.name,
-        leagueLogo: item.league.logo
+        leagueLogo: item.league.logo,
+        status: item.fixture.status.short,
+        homeScore: item.goals.home,
+        awayScore: item.goals.away
     }));
 }

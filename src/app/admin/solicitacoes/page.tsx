@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { handleRequestAction } from "@/actions/admin-actions"
+// CORREÇÃO: Importar as ações específicas em vez de "handleRequestAction"
+import { approveRequestAction, rejectRequestAction } from "@/actions/admin-actions"
+import { InternalNavbar } from "@/components/internal-navbar"
 
 export default async function AdminRequestsPage() {
     const cookieStore = await cookies()
@@ -9,79 +11,74 @@ export default async function AdminRequestsPage() {
 
     if (!userId) redirect("/login")
 
+    // Verifica se é ADMIN
     const user = await prisma.user.findUnique({ where: { id: userId } })
-    if (user?.role !== 'ADMIN') {
-        return <div className="min-h-screen bg-black text-red-500 flex items-center justify-center font-bold text-2xl">ACESSO NEGADO 🚫</div>
-    }
+    if (user?.role !== 'ADMIN') redirect("/dashboard")
 
-    const requests = await prisma.championshipRequest.findMany({
+    // Busca solicitações pendentes
+    const pendingRequests = await prisma.championshipRequest.findMany({
         where: { status: 'PENDING' },
         include: { user: true },
         orderBy: { createdAt: 'desc' }
     })
 
     return (
-        <div className="min-h-screen bg-[#0f0f0f] text-white p-8">
-            <header className="max-w-6xl mx-auto mb-10 flex justify-between items-center">
-                <div>
-                    <h1 className="text-4xl font-black font-['Teko'] text-[#a3e635]">SUPER ADMIN</h1>
-                    <p className="text-gray-400">Gerenciar solicitações de campeonatos</p>
-                </div>
-                <div className="bg-[#1a1a1a] px-4 py-2 rounded border border-white/10">
-                    <span className="text-[#a3e635] font-bold text-xl">{requests.length}</span> Pendentes
-                </div>
-            </header>
+        <div className="min-h-screen bg-[#0f0f0f] text-white">
+            <InternalNavbar />
 
-            <main className="max-w-6xl mx-auto">
-                {requests.length === 0 ? (
-                    <div className="text-center py-20 border border-dashed border-white/10 rounded-xl">
-                        <p className="text-gray-500">Nenhuma solicitação pendente no momento.</p>
+            <div className="max-w-7xl mx-auto p-6">
+                <h1 className="text-3xl font-black italic font-teko uppercase text-white mb-8 border-b border-white/10 pb-4">
+                    GERENCIAR SOLICITAÇÕES
+                </h1>
+
+                {pendingRequests.length === 0 ? (
+                    <div className="p-10 bg-[#1a1a1a] border border-dashed border-white/10 rounded-xl text-center text-gray-500">
+                        <p>Nenhuma solicitação pendente.</p>
                     </div>
                 ) : (
-                    <div className="grid gap-4">
-                        {requests.map((req) => (
-                            <div key={req.id} className="bg-[#1a1a1a] border border-white/10 p-6 rounded-xl flex flex-col md:flex-row items-center justify-between gap-6 hover:border-white/20 transition-colors">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {pendingRequests.map(req => (
+                            <div key={req.id} className="bg-[#1a1a1a] border border-white/10 p-5 rounded-xl flex flex-col justify-between shadow-lg">
+                                <div>
+                                    <span className="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-400 uppercase font-bold mb-2 inline-block">
+                                        {req.leagueType}
+                                    </span>
+                                    <h3 className="text-xl font-black text-white uppercase leading-none mb-1">{req.name}</h3>
+                                    <p className="text-xs text-gray-400 mb-4">Por: <strong className="text-white">{req.user.name}</strong></p>
 
-                                <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <h3 className="text-2xl font-bold text-white">{req.name}</h3>
-                                        <span className="px-2 py-0.5 bg-white/10 rounded text-xs text-gray-300 border border-white/10">
-                                            {req.leagueType}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-6 text-sm text-gray-400">
-                                        <span className="flex items-center gap-1">
-                                            👤 {req.user.name}
-                                        </span>
-                                        <span className="flex items-center gap-1 text-[#a3e635]">
-                                            📱 {req.whatsapp}
-                                        </span>
-                                        <span className="text-xs opacity-50">
-                                            {new Date(req.createdAt).toLocaleDateString()}
-                                        </span>
+                                    <div className="bg-[#0f0f0f] p-3 rounded border border-white/5 mb-4">
+                                        <p className="text-[10px] text-gray-500 uppercase font-bold">WhatsApp</p>
+                                        <div className="flex items-center gap-2 justify-between">
+                                            <span className="text-emerald-400 font-mono font-bold">{req.whatsapp}</span>
+                                            <a
+                                                href={`https://wa.me/55${req.whatsapp.replace(/\D/g, "")}`}
+                                                target="_blank"
+                                                className="text-[10px] bg-emerald-500/20 text-emerald-500 px-2 py-1 rounded hover:bg-emerald-500 hover:text-black transition-colors"
+                                            >
+                                                Chamar
+                                            </a>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-3">
-                                    <form action={async (formData) => {
+                                <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-4">
+                                    {/* Botão de Rejeitar */}
+                                    <form action={async () => {
                                         'use server'
-                                        await handleRequestAction(formData)
+                                        await rejectRequestAction(req.id)
                                     }}>
-                                        <input type="hidden" name="requestId" value={req.id} />
-                                        <input type="hidden" name="action" value="REJECT" />
-                                        <button className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded font-bold transition-colors uppercase text-sm">
-                                            Recusar
+                                        <button className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-3 rounded font-bold text-xs uppercase transition-colors">
+                                            Rejeitar
                                         </button>
                                     </form>
 
-                                    <form action={async (formData) => {
+                                    {/* Botão de Aprovar */}
+                                    <form action={async () => {
                                         'use server'
-                                        await handleRequestAction(formData)
+                                        await approveRequestAction(req.id)
                                     }}>
-                                        <input type="hidden" name="requestId" value={req.id} />
-                                        <input type="hidden" name="action" value="APPROVE" />
-                                        <button className="px-6 py-2 bg-[#a3e635] hover:bg-[#8cc629] text-black font-black rounded transition-transform hover:scale-105 uppercase text-sm shadow-lg shadow-[#a3e635]/20">
-                                            Aprovar & Criar
+                                        <button className="w-full bg-emerald-500 hover:bg-emerald-400 text-black py-3 rounded font-black text-xs uppercase transition-colors shadow-lg shadow-emerald-500/10">
+                                            Aprovar
                                         </button>
                                     </form>
                                 </div>
@@ -89,7 +86,7 @@ export default async function AdminRequestsPage() {
                         ))}
                     </div>
                 )}
-            </main>
+            </div>
         </div>
     )
 }

@@ -1,69 +1,76 @@
-import { HeroActions } from "@/components/landing/hero-actions";
-import { Navbar } from "@/components/landing/navbar";
+import { Navbar } from "@/components/landing/navbar"
+import { HeroFooter } from "@/components/landing/hero-footer"
+import Link from "next/link"
+import { cookies } from "next/headers" // Importante para checar login
 
-export default function Home() {
+export default async function Home() {
+    // 1. Verificar se o usuário já está logado
+    const cookieStore = await cookies()
+    const isLoggedIn = !!cookieStore.get("palpita_session")?.value
+
     return (
-        <main className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-[#0f0f0f]">
+        <div className="min-h-screen bg-[#050505] text-white flex flex-col font-sans selection:bg-emerald-500 selection:text-black">
 
+            {/* Navbar (Topo) */}
             <Navbar />
 
-            {/* 1. IMAGEM DE FUNDO */}
-            <div
-                className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transform scale-105"
-                style={{
-                    backgroundImage: "url('https://wallpapers.com/images/hd/720p-sports-background-1275-x-704-x8qi0yyjkcubnw5s.jpg')",
-                }}
-            >
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0f0f0f] via-[#0f0f0f]/80 to-blue-900/40" />
-            </div>
+            {/* Hero Section (Meio) */}
+            <main className="flex-1 relative flex flex-col justify-center items-center text-center px-4 overflow-hidden">
 
-            {/* 2. CONTEÚDO PRINCIPAL (Ajustado para Mobile) */}
-            <div className="relative z-10 text-center px-4 w-full max-w-5xl mx-auto flex flex-col items-center justify-center min-h-[80vh] pt-20">
-
-                {/* Badge */}
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#a3e635]/10 border border-[#a3e635]/20 text-[#a3e635] text-[10px] md:text-xs font-bold uppercase tracking-widest backdrop-blur-sm mb-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                    <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-[#a3e635] rounded-full animate-pulse"/>
-                    2ª Temporada Disponível
+                {/* Imagem de Fundo */}
+                <div
+                    className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transform scale-105"
+                    style={{ backgroundImage: "url('https://wallpapers.com/images/hd/720p-sports-background-1275-x-704-x8qi0yyjkcubnw5s.jpg')" }}
+                >
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/40 to-[#050505]" />
                 </div>
 
-                {/* Título Responsivo */}
-                <h1 className="text-6xl sm:text-7xl md:text-8xl lg:text-9xl font-black italic tracking-tighter text-white drop-shadow-2xl leading-[0.85] font-teko mb-6">
-                    O JOGO FICA <br/>
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#a3e635] to-[#4ade80]">
-                        SÉRIO AQUI.
-                    </span>
-                </h1>
+                {/* Conteúdo */}
+                <div className="relative z-10 max-w-5xl mx-auto mt-20 md:mt-0 animate-in zoom-in duration-700">
 
-                <p className="text-base sm:text-lg md:text-xl text-gray-300 max-w-xl mx-auto font-medium drop-shadow-md px-4 leading-relaxed mb-8">
-                    Escudos, artilharia, rankings e a glória de um título.
-                    Palpites entre amigos com pontuação automática em tempo real.
-                </p>
+                    <div className="inline-block mb-4 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 backdrop-blur-md">
+            <span className="text-[10px] md:text-xs font-bold text-emerald-400 uppercase tracking-widest">
+              ● 2ª Temporada Disponível
+            </span>
+                    </div>
 
-                {/* Botões de Ação */}
-                <div className="w-full max-w-md mx-auto">
-                    <HeroActions />
+                    <h1 className="text-6xl md:text-8xl lg:text-9xl font-black italic text-white leading-[0.9] tracking-tighter mb-6 font-teko drop-shadow-2xl">
+                        O JOGO FICA <br />
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-lime-400">
+              SÉRIO AQUI.
+            </span>
+                    </h1>
+
+                    <p className="text-gray-300 text-sm md:text-lg max-w-2xl mx-auto mb-10 leading-relaxed font-medium drop-shadow-md">
+                        Escudos, artilharia, rankings e a glória de um título.<br className="hidden md:block"/>
+                        Palpites entre amigos com pontuação automática em tempo real.
+                    </p>
+
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-4 w-full max-w-md mx-auto">
+                        {/* BOTÃO 1: CRIAR */}
+                        <Link
+                            href={isLoggedIn ? "/criar-campeonato" : "/cadastro"} // Se logado -> cria, Senão -> cadastra
+                            className="w-full md:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-lime-500 hover:from-emerald-400 hover:to-lime-400 text-black font-black text-lg rounded-xl transition-all transform hover:scale-105 shadow-[0_0_30px_rgba(16,185,129,0.4)] uppercase tracking-wide flex items-center justify-center gap-2"
+                        >
+                            CRIAR CAMPEONATO 🏆
+                        </Link>
+
+                        {/* BOTÃO 2: ENTRAR */}
+                        <Link
+                            href={isLoggedIn ? "/dashboard" : "/login"} // Se logado -> dashboard, Senão -> login
+                            className="w-full md:w-auto px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-sm rounded-xl transition-all uppercase tracking-wide flex items-center justify-center gap-2 backdrop-blur-sm"
+                        >
+                            {isLoggedIn ? "IR PARA O PAINEL ➜" : "ENTRAR NA LIGA ➜"}
+                        </Link>
+                    </div>
                 </div>
 
-            </div>
-
-            {/* 3. RODAPÉ (Esconde no mobile muito pequeno para não poluir) */}
-            <footer className="absolute bottom-0 w-full z-10 border-t border-white/10 bg-black/40 backdrop-blur-md hidden sm:block">
-                <div className="grid grid-cols-3 max-w-5xl mx-auto py-6 text-center divide-x divide-white/10">
-                    <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-white font-teko">10+</h3>
-                        <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">Ligas Oficiais</p>
-                    </div>
-                    <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-[#a3e635] font-teko">Ao Vivo</h3>
-                        <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">Atualização Real</p>
-                    </div>
-                    <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-white font-teko">H2H</h3>
-                        <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">Modo Confronto</p>
-                    </div>
+                {/* Footer (Barra de Ligas) */}
+                <div className="absolute bottom-0 w-full z-20">
+                    <HeroFooter />
                 </div>
-            </footer>
 
-        </main>
-    );
+            </main>
+        </div>
+    )
 }

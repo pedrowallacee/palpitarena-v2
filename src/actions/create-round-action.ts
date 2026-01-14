@@ -1,42 +1,47 @@
 'use server'
 
 import { prisma } from "@/lib/prisma"
-import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 
-export async function createRound(formData: FormData) {
-    // 1. Pegar o Slug do campeonato (que virá num campo escondido)
+export async function createRoundAction(formData: FormData) {
     const slug = formData.get("slug") as string
     const name = formData.get("name") as string
-    const deadlineString = formData.get("deadline") as string
+    const deadlineDate = formData.get("date") as string // "YYYY-MM-DD"
+    const deadlineTime = formData.get("time") as string // "HH:MM"
 
-    // 2. Validar
-    if (!slug || !name || !deadlineString) return
-
-    // 3. Buscar o ID do campeonato usando o slug
-    const championship = await prisma.championship.findUnique({
-        where: { slug }
-    })
-
-    if (!championship) {
-        console.error("Campeonato não encontrado")
-        return
+    if (!slug || !name || !deadlineDate || !deadlineTime) {
+        return { success: false, message: "Preencha todos os campos." }
     }
 
-    // 4. Criar a Rodada
-    await prisma.round.create({
-        data: {
-            name,
-            deadline: new Date(deadlineString), // Converte o texto do input para Data Real
-            championshipId: championship.id,
-            status: "SCHEDULED"
-        }
-    })
+    try {
+        // 1. Busca o campeonato pelo slug
+        const championship = await prisma.championship.findUnique({
+            where: { slug }
+        })
 
-    // 5. Atualizar a tela anterior (para a rodada aparecer na lista lá)
-    revalidatePath(`/campeonatos/${slug}`)
+        if (!championship) return { success: false, message: "Campeonato não encontrado." }
 
-    // 6. Voltar para a página do campeonato
-    redirect(`/campeonatos/${slug}`)
+        // 2. Monta a Data ISO (Data + Hora)
+        const deadlineISO = new Date(`${deadlineDate}T${deadlineTime}:00`).toISOString()
+
+        // 3. Cria a Rodada
+        const round = await prisma.round.create({
+            data: {
+                name,
+                deadline: deadlineISO,
+                championshipId: championship.id,
+                status: 'OPEN'
+            }
+        })
+
+        revalidatePath(`/campeonatos/${slug}`)
+
+        // SUCESSO: Redireciona para dentro da rodada para adicionar jogos
+        return { success: true, roundId: round.id }
+
+    } catch (error) {
+        console.error(error)
+        return { success: false, message: "Erro ao criar rodada." }
+    }
 }

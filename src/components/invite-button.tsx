@@ -5,25 +5,24 @@ import { useState } from "react"
 export function InviteButton({ slug }: { slug: string }) {
     const [copied, setCopied] = useState(false)
 
-    function copyLink() {
-        const link = `${window.location.origin}/convite/${slug}`
-        navigator.clipboard.writeText(link)
+    function handleCopy() {
+        // Pega a URL base do navegador
+        const url = `${window.location.origin}/convite/${slug}`
+        navigator.clipboard.writeText(url)
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }
 
     return (
         <button
-            onClick={copyLink}
-            className={`
-        px-6 py-3 border rounded font-bold transition-all flex items-center gap-2
-        ${copied
-                ? 'bg-green-500/20 border-green-500 text-green-400'
-                : 'bg-white/5 hover:bg-white/10 border-white/10 text-emerald-400 hover:text-emerald-300'
-            }
-      `}
+            onClick={handleCopy}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold uppercase tracking-wide transition-all active:scale-95"
         >
-            {copied ? 'LINK COPIADO! 📋' : '🔗 CONVIDAR AMIGOS'}
+            {copied ? (
+                <span className="text-emerald-400">Copiado! ✅</span>
+            ) : (
+                <span className="text-gray-300">🔗 Copiar Link de Convite</span>
+            )}
         </button>
     )
 }

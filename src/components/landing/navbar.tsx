@@ -14,9 +14,9 @@ export async function Navbar() {
     return (
         <nav className="absolute top-0 w-full z-50 px-4 py-4 md:px-6 md:py-6 flex items-center justify-between max-w-7xl mx-auto left-0 right-0">
             {/* Logo */}
-            <div className="text-2xl md:text-3xl font-black italic tracking-tighter text-white font-teko">
+            <Link href="/" className="text-2xl md:text-3xl font-black italic tracking-tighter text-white font-teko hover:opacity-80 transition-opacity">
                 PALPITA<span className="text-emerald-500">RENA</span>
-            </div>
+            </Link>
 
             {/* Ações */}
             <div className="flex items-center gap-3">
@@ -25,6 +25,17 @@ export async function Navbar() {
                         <span className="hidden md:block text-sm font-bold text-gray-300 font-sans">
                             Olá, {user.name.split(' ')[0]}
                         </span>
+
+                        {/* --- NOVO: Botão Só para Admin --- */}
+                        {user.role === 'ADMIN' && (
+                            <Link
+                                href="/admin/solicitacoes"
+                                className="px-4 py-1.5 md:px-5 md:py-2 bg-red-600/20 hover:bg-red-600/40 border border-red-500/50 rounded-full text-red-400 text-xs md:text-sm font-bold transition-all backdrop-blur-md uppercase tracking-wide flex items-center gap-2"
+                            >
+                                🔒 Admin
+                            </Link>
+                        )}
+
                         <Link
                             href="/dashboard"
                             className="px-4 py-1.5 md:px-5 md:py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full text-white text-xs md:text-sm font-bold transition-all backdrop-blur-md uppercase tracking-wide"
