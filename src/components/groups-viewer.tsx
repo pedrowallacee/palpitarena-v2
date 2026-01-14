@@ -79,7 +79,7 @@ export async function GroupsViewer({ championshipId }: { championshipId: string 
                                             {team.teamLogo && <img src={team.teamLogo} className="w-8 h-8 object-contain" />}
                                             <div>
                                                 <span className="block font-bold text-white leading-tight">{team.teamName}</span>
-                                                <span className="text-[10px] text-gray-400 uppercase">{team.user.name.split(' ')[0]}</span>
+                                                <span className="text-[10px] text-gray-400 uppercase">{team.user?.name ? team.user.name.split(' ')[0] : "CPU"}</span>
                                             </div>
                                         </div>
                                     </td>
