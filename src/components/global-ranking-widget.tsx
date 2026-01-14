@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma} from "@/lib/prisma";
 
 export async function GlobalRankingWidget() {
     // Busca os Top 5 usuários do site todo
