@@ -44,7 +44,7 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
             const data = await res.json();
 
             if (data.errors && Object.keys(data.errors).length > 0) {
-                console.warn(`⚠️ [API ERR] Credencial #${index + 1}:`, JSON.stringify(data.errors));
+                // console.warn(`⚠️ [API ERR] Credencial #${index + 1}:`, JSON.stringify(data.errors));
                 continue;
             }
             if (!data.response) continue;
@@ -59,84 +59,95 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
 }
 
 // =====================================================================
-// 🕵️‍♂️ DESCOBRIR TEMPORADA ATUAL (O SEGREDO UNIVERSAL)
+// 🕵️‍♂️ 1. DESCOBRIR TEMPORADA ATUAL
 // =====================================================================
 async function getCurrentSeasonYear(leagueId: number): Promise<number> {
-    // Pergunta para a API: "Qual temporada está ativa (current=true) para esta liga?"
-    const response = await fetchAPI(`/leagues?id=${leagueId}&current=true`, 86400); // Cache de 1 dia
+    const response = await fetchAPI(`/leagues?id=${leagueId}&current=true`, 86400);
 
     if (response && response.length > 0 && response[0].seasons && response[0].seasons.length > 0) {
-        const currentSeason = response[0].seasons[0].year;
-        console.log(`📅 [API] Liga ${leagueId} está na temporada: ${currentSeason}`);
-        return currentSeason;
+        return response[0].seasons[0].year;
     }
 
-    // Se a API falhar ou não retornar nada, usamos o ano atual como "chute" de segurança
-    const currentYear = new Date().getFullYear();
-    console.warn(`⚠️ [API] Não foi possível detectar temporada. Usando ano atual: ${currentYear}`);
-    return currentYear;
+    // Fallback: Se falhar, usa o ano que a gente sabe que a maioria das ligas europeias estão (2025 em jan/26)
+    return 2025;
 }
 
 // =====================================================================
-// 🏆 BUSCAR TIMES (INTELIGENTE E UNIVERSAL)
+// 📋 2. BUSCA VIA TABELA (Retorna null se falhar)
+// =====================================================================
+async function fetchFromStandings(leagueId: number, season: number): Promise<APITeam[] | null> {
+    try {
+        const res = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
+
+        if (res && res.length > 0 && res[0].league && res[0].league.standings) {
+            let teams: APITeam[] = [];
+            res[0].league.standings.forEach((groupOrTable: any[]) => {
+                groupOrTable.forEach((pos: any) => {
+                    teams.push({ id: pos.team.id, name: pos.team.name, logo: pos.team.logo });
+                });
+            });
+            // Remove duplicatas e retorna se tiver times suficientes
+            if (teams.length >= 4) {
+                const unique = Array.from(new Map(teams.map(t => [t.id, t])).values());
+                return unique;
+            }
+        }
+    } catch (e) { return null; }
+    return null;
+}
+
+// =====================================================================
+// 📦 3. BUSCA VIA LISTA DE TIMES (Retorna null se falhar)
+// =====================================================================
+async function fetchFromTeamsList(leagueId: number, season: number): Promise<APITeam[] | null> {
+    try {
+        const res = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
+        if (res && res.length > 4) {
+            return res.map((item: any) => ({
+                id: item.team.id,
+                name: item.team.name,
+                logo: item.team.logo
+            }));
+        }
+    } catch (e) { return null; }
+    return null;
+}
+
+// =====================================================================
+// 🚀 FUNÇÃO PRINCIPAL (CASCATA BLINDADA)
 // =====================================================================
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
 
-    // 1. Descobrir qual ano devemos buscar (Sem adivinhar!)
-    const targetSeason = await getCurrentSeasonYear(leagueId);
+    // 1. Pega a temporada "OFICIAL"
+    const currentSeason = await getCurrentSeasonYear(leagueId);
 
-    console.log(`🔎 [API] Buscando times da Liga ${leagueId} (Temporada ${targetSeason})...`)
+    // 2. Define a ordem de tentativas: [Ano Atual, Ano Anterior]
+    // Se a API diz que estamos em 2026, mas não tem dados, tentamos 2025.
+    const seasonsToTry = [currentSeason, currentSeason - 1];
 
-    // 2. TENTATIVA A: BUSCAR VIA TABELA (STANDINGS)
-    // A tabela é a "Prova Real". Quem está nela, está jogando o campeonato.
-    try {
-        const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${targetSeason}`, 3600);
+    console.log(`🔎 Buscando times para Liga ${leagueId}. Tentativas: ${seasonsToTry.join(', ')}`);
 
-        if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
-            const standings = standingsRes[0].league.standings;
-            let teams: APITeam[] = [];
-
-            // Extrai times de todos os grupos ou tabela única
-            standings.forEach((groupOrTable: any[]) => {
-                groupOrTable.forEach((position: any) => {
-                    teams.push({
-                        id: position.team.id,
-                        name: position.team.name,
-                        logo: position.team.logo
-                    });
-                });
-            });
-
-            // Se a tabela tem times, confiamos nela 100%
-            if (teams.length >= 2) {
-                // Remove duplicatas
-                const uniqueTeams = Array.from(new Map(teams.map(t => [t.id, t])).values());
-                console.log(`✅ [API] Sucesso! ${uniqueTeams.length} times vindos da Tabela.`);
-                return uniqueTeams;
-            }
+    for (const season of seasonsToTry) {
+        // A. Tenta Tabela (Melhor qualidade, sem eliminados)
+        const teamsStandings = await fetchFromStandings(leagueId, season);
+        if (teamsStandings) {
+            console.log(`✅ [Standings] Sucesso na temporada ${season} (${teamsStandings.length} times)`);
+            return teamsStandings;
         }
-    } catch (err) {
-        console.warn(`⚠️ Erro ao processar tabela:`, err);
+
+        // B. Tenta Lista Bruta (Fallback se não tiver tabela)
+        const teamsList = await fetchFromTeamsList(leagueId, season);
+        if (teamsList) {
+            console.log(`✅ [TeamsList] Sucesso na temporada ${season} (${teamsList.length} times)`);
+            return teamsList;
+        }
     }
 
-    // 3. TENTATIVA B: LISTA DE TIMES (INSCRITOS)
-    // Se a tabela veio vazia (campeonato não começou ou erro na API), pegamos a lista oficial de times.
-    console.log(`⚠️ [FALLBACK] Tabela vazia. Buscando lista de inscritos em ${targetSeason}...`);
-    const fallbackRes = await fetchAPI(`/teams?league=${leagueId}&season=${targetSeason}`, 86400);
-
-    if (fallbackRes && fallbackRes.length > 0) {
-        console.log(`✅ [API] Lista de inscritos retornou ${fallbackRes.length} times.`);
-        return fallbackRes.map((item: any) => ({
-            id: item.team.id,
-            name: item.team.name,
-            logo: item.team.logo
-        }));
-    }
-
+    console.error(`❌ FALHA TOTAL: Nenhum time encontrado para Liga ${leagueId} em nenhuma temporada recente.`);
     return [];
 }
 
-// --- OUTRAS FUNÇÕES (MANTIDAS COM FUSO HORÁRIO CORRIGIDO) ---
+// --- RESTO DAS FUNÇÕES IGUAIS ---
 
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
@@ -177,7 +188,6 @@ export async function getMatchesByIds(ids: number[]): Promise<any[]> {
     for (const batch of batches) {
         const idsString = batch.join('-');
         console.log(`⚡ [API] Buscando lote de jogos: ${idsString}`);
-        // Fuso horário mantido
         const response = await fetchAPI(`/fixtures?ids=${idsString}&timezone=America/Sao_Paulo`, 3600);
         if (response) {
             const formatted = response.map((item: any) => ({
