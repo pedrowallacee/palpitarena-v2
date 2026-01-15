@@ -59,54 +59,73 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
 }
 
 // =====================================================================
-// 🕵️‍♂️ FUNÇÃO DE TIMES - MODO "100% FIEL" (STANDINGS ONLY)
+// 🕵️‍♂️ DETETIVE DE TEMPORADA (Descobre qual ano está valendo)
 // =====================================================================
-export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
-    // Ordem de prioridade: Temporada 2025 (Atual), depois 2024 (Caso a API esteja atrasada)
-    const seasons = [2025, 2024];
+async function getCurrentSeasonYear(leagueId: number): Promise<number | null> {
+    // Busca informações da liga para saber qual temporada está com "current: true"
+    const response = await fetchAPI(`/leagues?id=${leagueId}&current=true`, 86400); // Cache de 1 dia
 
-    for (const season of seasons) {
-        console.log(`🔎 [API] Buscando TABELA da Liga ${leagueId} na temporada ${season}...`)
-
-        try {
-            // Buscamos EXCLUSIVAMENTE a tabela (/standings).
-            // Isso garante que pegamos apenas os times ativos na fase de liga/grupos.
-            const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
-
-            if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
-                const standings = standingsRes[0].league.standings;
-                let teams: APITeam[] = [];
-
-                // O endpoint standings retorna um array de grupos.
-                // Iteramos por todos os grupos/tabelas para extrair os times.
-                standings.forEach((groupOrTable: any[]) => {
-                    groupOrTable.forEach((position: any) => {
-                        teams.push({
-                            id: position.team.id,
-                            name: position.team.name,
-                            logo: position.team.logo
-                        });
-                    });
-                });
-
-                // Se encontrou times na tabela, ISSO É A VERDADE. Retorna e encerra.
-                if (teams.length >= 2) { // Pelo menos 2 times para ser uma liga válida
-                    console.log(`✅ [API] Sucesso! ${teams.length} times ativos encontrados na Tabela ${season}.`);
-
-                    // Remove duplicatas (caso a API retorne bugs de grupos repetidos)
-                    const uniqueTeams = Array.from(new Map(teams.map(t => [t.id, t])).values());
-                    return uniqueTeams;
-                }
-            }
-        } catch (err) {
-            console.warn(`⚠️ Erro ao processar tabela da temporada ${season}:`, err);
-        }
+    if (response && response.length > 0 && response[0].seasons && response[0].seasons.length > 0) {
+        const currentSeason = response[0].seasons[0].year;
+        console.log(`📅 [API] A temporada ativa da Liga ${leagueId} é: ${currentSeason}`);
+        return currentSeason;
     }
 
-    // Se chegou aqui, é porque não achou tabela em 2025 nem 2024.
-    // Nesse caso crítico, tentamos a lista bruta APENAS da temporada 2025 para não ficar vazio.
-    console.log(`⚠️ [FALLBACK] Tabela não encontrada. Tentando lista bruta de inscritos (2025)...`);
-    const fallbackRes = await fetchAPI(`/teams?league=${leagueId}&season=2025`, 86400);
+    // Se falhar, retorna null (vamos tentar um fallback manual depois)
+    return null;
+}
+
+// =====================================================================
+// 🏆 FUNÇÃO DE TIMES - MODO "SNIPER" (PRECISÃO MÁXIMA)
+// =====================================================================
+export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
+
+    // PASSO 1: Descobrir o ano correto dinamicamente
+    let targetSeason = await getCurrentSeasonYear(leagueId);
+
+    // Fallback de segurança: Se a API não disser qual é a atual, tentamos 2025 (estamos em 2026, mas a temporada europeia é 25/26)
+    if (!targetSeason) {
+        console.warn(`⚠️ [API] Não foi possível detectar temporada atual. Tentando 2025...`);
+        targetSeason = 2025;
+    }
+
+    // PASSO 2: Buscar a TABELA daquele ano específico
+    // A tabela é a única fonte da verdade sobre quem está jogando AGORA.
+    console.log(`🔎 [API] Buscando TABELA da Liga ${leagueId} na temporada ${targetSeason}...`)
+
+    try {
+        const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${targetSeason}`, 3600);
+
+        if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
+            const standings = standingsRes[0].league.standings;
+            let teams: APITeam[] = [];
+
+            // Extrai times de todos os grupos/tabelas
+            standings.forEach((groupOrTable: any[]) => {
+                groupOrTable.forEach((position: any) => {
+                    teams.push({
+                        id: position.team.id,
+                        name: position.team.name,
+                        logo: position.team.logo
+                    });
+                });
+            });
+
+            if (teams.length >= 2) {
+                // Remove duplicatas (segurança extra)
+                const uniqueTeams = Array.from(new Map(teams.map(t => [t.id, t])).values());
+                console.log(`✅ [API] Sucesso! ${uniqueTeams.length} times ativos na Tabela ${targetSeason}.`);
+                return uniqueTeams;
+            }
+        }
+    } catch (err) {
+        console.warn(`⚠️ Erro ao processar tabela:`, err);
+    }
+
+    // PASSO 3: LISTA DE TIMES (Último recurso)
+    // Se a tabela falhar (ex: campeonato não começou), pegamos a lista de times inscritos NAQUELE ANO EXATO.
+    console.log(`⚠️ [FALLBACK] Tabela vazia. Buscando lista de inscritos em ${targetSeason}...`);
+    const fallbackRes = await fetchAPI(`/teams?league=${leagueId}&season=${targetSeason}`, 86400);
 
     if (fallbackRes && fallbackRes.length > 0) {
         return fallbackRes.map((item: any) => ({
@@ -119,12 +138,11 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
     return [];
 }
 
-// --- FUNÇÃO DE BUSCA POR DATA (COM FUSO CORRIGIDO) ---
+// --- OUTRAS FUNÇÕES (MANTIDAS IGUAIS) ---
+
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
-
     if (!response) return [];
-
     return response.map((item: any) => ({
         apiId: item.fixture.id,
         homeTeam: item.teams.home.name,
@@ -140,11 +158,9 @@ export async function getMatchesByDate(date: string, cacheTime = 300): Promise<a
     }));
 }
 
-// --- FUNÇÃO DE JOGOS AO VIVO ---
 export async function getLiveMatches(): Promise<any[]> {
-    const response = await fetchAPI(`/fixtures?live=all`, 0); // Live é sempre 0 cache
+    const response = await fetchAPI(`/fixtures?live=all`, 0);
     if (!response) return [];
-
     return response.map((item: any) => ({
         apiId: item.fixture.id.toString(),
         status: item.fixture.status.short,
@@ -154,24 +170,16 @@ export async function getLiveMatches(): Promise<any[]> {
     }));
 }
 
-// --- FUNÇÃO DE BUSCA EM LOTE (COM FUSO CORRIGIDO) ---
 export async function getMatchesByIds(ids: number[]): Promise<any[]> {
     if (ids.length === 0) return [];
-
     const batches = [];
-    for (let i = 0; i < ids.length; i += 20) {
-        batches.push(ids.slice(i, i + 20));
-    }
+    for (let i = 0; i < ids.length; i += 20) batches.push(ids.slice(i, i + 20));
 
     let allMatches: any[] = [];
-
     for (const batch of batches) {
         const idsString = batch.join('-');
         console.log(`⚡ [API] Buscando lote de jogos: ${idsString}`);
-
-        // AQUI ESTÁ A CORREÇÃO DO HORÁRIO: &timezone=America/Sao_Paulo
         const response = await fetchAPI(`/fixtures?ids=${idsString}&timezone=America/Sao_Paulo`, 3600);
-
         if (response) {
             const formatted = response.map((item: any) => ({
                 apiId: item.fixture.id,
@@ -189,6 +197,5 @@ export async function getMatchesByIds(ids: number[]): Promise<any[]> {
             allMatches = [...allMatches, ...formatted];
         }
     }
-
     return allMatches;
 }
