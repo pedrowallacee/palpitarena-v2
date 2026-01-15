@@ -16,10 +16,10 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
     const [saving, setSaving] = useState(false)
     const [selectedMatches, setSelectedMatches] = useState<any[]>([])
 
-    // Estados para controlar quais ligas estão expandidas (opcional, por padrão deixo todas abertas)
+    // Estados para controlar quais ligas estão expandidas/colapsadas
     const [collapsedLeagues, setCollapsedLeagues] = useState<string[]>([])
 
-    // 1. AGRUPAR JOGOS POR LIGA (Mágica acontece aqui)
+    // 1. AGRUPAR JOGOS POR LIGA (Organização Visual)
     const matchesByLeague = useMemo(() => {
         const groups: Record<string, any[]> = {}
 
@@ -31,7 +31,7 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
             groups[leagueName].push(match)
         })
 
-        // Opcional: Ordenar ligas por prioridade ou alfabética
+        // Ordena alfabeticamente pelo nome da liga
         return Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0]))
     }, [matches])
 
@@ -72,7 +72,7 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
             // Remove todos dessa liga
             setSelectedMatches(prev => prev.filter(m => !allIds.includes(m.apiId || m.externalId)))
         } else {
-            // Adiciona os que faltam
+            // Adiciona os que faltam (evita duplicatas)
             const newSelections = leagueMatches.filter(m =>
                 !selectedMatches.some(s => (s.apiId || s.externalId) === (m.apiId || m.externalId))
             )
@@ -91,15 +91,21 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
     async function handleSaveSelected() {
         if (selectedMatches.length === 0) return
         setSaving(true)
+
+        // Chama a Action de salvar (que deve usar a lógica de lote/batch)
         const res = await saveSelectedMatches(selectedMatches, roundId, championshipSlug)
+
         setSaving(false)
 
         if (res?.success) {
+            // Remove os jogos salvos da lista visual
             const savedIds = selectedMatches.map(m => m.apiId || m.externalId)
             setMatches(prev => prev.filter(m => !savedIds.includes(m.apiId || m.externalId)))
-            setSelectedMatches([])
+
+            setSelectedMatches([]) // Limpa seleção
+            alert("✅ Jogos adicionados com sucesso!")
         } else {
-            alert("Erro ao salvar: " + (res?.error || "Erro desconhecido"))
+            alert("Erro ao salvar: " + (res?.error || res?.message || "Erro desconhecido"))
         }
     }
 
@@ -129,7 +135,11 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
                     disabled={loadingSearch}
                     className="px-6 py-3 bg-white/5 hover:bg-emerald-500 hover:text-black text-white border border-white/10 hover:border-emerald-500 font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
                 >
-                    {loadingSearch ? "..." : "🔍 Buscar"}
+                    {loadingSearch ? (
+                        <span className="animate-spin">⏳</span>
+                    ) : (
+                        "🔍 Buscar"
+                    )}
                 </button>
             </div>
 
@@ -146,7 +156,7 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
                         )
 
                         return (
-                            <div key={leagueName} className="bg-[#1a1a1a] border border-white/5 rounded-xl overflow-hidden">
+                            <div key={leagueName} className="bg-[#1a1a1a] border border-white/5 rounded-xl overflow-hidden animate-in slide-in-from-bottom-2 duration-500">
 
                                 {/* CABEÇALHO DA LIGA */}
                                 <div className="bg-[#222] p-3 flex items-center justify-between border-b border-white/5 select-none">
@@ -172,7 +182,7 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
                                     {/* Botão Check All */}
                                     <button
                                         onClick={() => toggleLeagueSelection(leagueMatches)}
-                                        className={`w-6 h-6 rounded border flex items-center justify-center transition-all ${allSelected ? 'bg-emerald-500 border-emerald-500 text-black' : 'border-white/20 hover:border-white/50 text-transparent'}`}
+                                        className={`w-6 h-6 rounded border flex items-center justify-center transition-all ${allSelected ? 'bg-emerald-500 border-emerald-500 text-black' : 'border-white/20 hover:border-white/50 text-transparent hover:text-gray-500'}`}
                                         title="Selecionar todos desta liga"
                                     >
                                         ✓
@@ -193,7 +203,7 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
                                                     key={idx}
                                                     onClick={() => toggleMatchSelection(match)}
                                                     className={`
-                                                        cursor-pointer p-3 rounded-lg flex items-center justify-between group transition-all border
+                                                        cursor-pointer p-3 rounded-lg flex items-center justify-between group transition-all border select-none
                                                         ${isSelected
                                                         ? "bg-emerald-900/10 border-emerald-500/50 shadow-[inset_0_0_15px_rgba(16,185,129,0.05)]"
                                                         : "bg-[#1f1f1f] border-white/5 hover:border-white/20"
@@ -207,17 +217,17 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
                                                     </div>
 
                                                     {/* TIMES */}
-                                                    <div className="flex-1 flex flex-col gap-1.5">
+                                                    <div className="flex-1 flex flex-col gap-1.5 overflow-hidden">
                                                         {/* Casa */}
                                                         <div className="flex items-center gap-2">
-                                                            <img src={match.homeLogo} className="w-5 h-5 object-contain" alt="" />
+                                                            {match.homeLogo && <img src={match.homeLogo} className="w-5 h-5 object-contain" alt="" />}
                                                             <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-gray-400'}`}>
                                                                 {match.homeTeam}
                                                             </span>
                                                         </div>
                                                         {/* Fora */}
                                                         <div className="flex items-center gap-2">
-                                                            <img src={match.awayLogo} className="w-5 h-5 object-contain" alt="" />
+                                                            {match.awayLogo && <img src={match.awayLogo} className="w-5 h-5 object-contain" alt="" />}
                                                             <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-gray-400'}`}>
                                                                 {match.awayTeam}
                                                             </span>
@@ -236,7 +246,7 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
 
             {/* --- BARRA FLUTUANTE (DOCK) --- */}
             {selectedMatches.length > 0 && (
-                <div className="fixed bottom-4 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-auto md:min-w-[400px] z-50 animate-in slide-in-from-bottom-10 fade-in duration-300">
+                <div className="fixed bottom-6 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-auto md:min-w-[400px] z-50 animate-in slide-in-from-bottom-10 fade-in duration-300">
                     <div className="bg-[#121212]/95 backdrop-blur-xl border border-emerald-500/50 rounded-2xl p-2 pl-4 flex items-center justify-between shadow-[0_0_40px_rgba(0,0,0,0.8)]">
 
                         <div className="flex items-center gap-3">
@@ -255,7 +265,10 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
                             className="px-6 py-3 bg-white hover:bg-emerald-400 text-black font-black uppercase text-xs rounded-xl transition-all shadow-lg flex items-center gap-2 active:scale-95"
                         >
                             {saving ? (
-                                <span className="animate-pulse">Salvando...</span>
+                                <>
+                                    <span className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin"></span>
+                                    <span>Salvando...</span>
+                                </>
                             ) : (
                                 <>CONFIRMAR <span className="text-lg leading-none">➜</span></>
                             )}

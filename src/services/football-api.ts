@@ -38,7 +38,7 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
                     [cred.authHeader]: cred.key,
                     "x-rapidapi-host": cred.host
                 },
-                next: { revalidate: cacheDuration } // <--- O SEGREDO ESTÁ AQUI
+                next: { revalidate: cacheDuration }
             });
 
             const data = await res.json();
@@ -74,9 +74,8 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
     return [];
 }
 
-// --- FUNÇÃO CORRIGIDA: Aceita cacheTime ---
+// --- FUNÇÃO DE BUSCA POR DATA (COM CACHE CONTROLADO) ---
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
-    // Passamos o cacheTime dinâmico. Se for 0, ele busca na hora!
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
 
     if (!response) return [];
@@ -90,12 +89,13 @@ export async function getMatchesByDate(date: string, cacheTime = 300): Promise<a
         date: item.fixture.date,
         leagueName: item.league.name,
         leagueLogo: item.league.logo,
-        status: item.fixture.status.short, // FT, LIVE, etc
+        status: item.fixture.status.short,
         homeScore: item.goals.home,
         awayScore: item.goals.away
     }));
 }
 
+// --- FUNÇÃO DE JOGOS AO VIVO ---
 export async function getLiveMatches(): Promise<any[]> {
     const response = await fetchAPI(`/fixtures?live=all`, 0); // Live é sempre 0 cache
     if (!response) return [];
@@ -107,4 +107,45 @@ export async function getLiveMatches(): Promise<any[]> {
         awayScore: item.goals.away,
         elapsed: item.fixture.status.elapsed
     }));
+}
+
+// --- NOVA FUNÇÃO: BUSCA EM LOTE (CORREÇÃO DO PROBLEMA) ---
+export async function getMatchesByIds(ids: number[]): Promise<any[]> {
+    if (ids.length === 0) return [];
+
+    // A API aceita no máximo 20 IDs por vez separados por traço
+    // Vamos dividir em lotes de 20 para garantir que não falhe
+    const batches = [];
+    for (let i = 0; i < ids.length; i += 20) {
+        batches.push(ids.slice(i, i + 20));
+    }
+
+    let allMatches: any[] = [];
+
+    for (const batch of batches) {
+        const idsString = batch.join('-');
+        console.log(`⚡ [API] Buscando lote de jogos: ${idsString}`);
+
+        // Cache de 1 hora (3600) para garantir dados estáveis ao adicionar
+        const response = await fetchAPI(`/fixtures?ids=${idsString}`, 3600);
+
+        if (response) {
+            const formatted = response.map((item: any) => ({
+                apiId: item.fixture.id,
+                homeTeam: item.teams.home.name,
+                awayTeam: item.teams.away.name,
+                homeLogo: item.teams.home.logo,
+                awayLogo: item.teams.away.logo,
+                date: item.fixture.date,
+                leagueName: item.league.name,
+                leagueLogo: item.league.logo,
+                status: item.fixture.status.short,
+                homeScore: item.goals.home,
+                awayScore: item.goals.away
+            }));
+            allMatches = [...allMatches, ...formatted];
+        }
+    }
+
+    return allMatches;
 }
