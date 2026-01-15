@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -19,7 +21,7 @@ model User {
   image    String?
   role     Role    @default(USER)
 
-  // --- NOVOS CAMPOS PARA RANKING GERAL ---
+  // Ranking Global
   globalPoints Int @default(0)
   titles       Int @default(0)
 
@@ -57,11 +59,11 @@ model Championship {
   hasKnockout     Boolean            @default(true)
   adminPhone      String?
 
-  // --- NOVOS CAMPOS PARA REGRAS E AUTOMAÇÃO ---
-  totalRounds     Int? // Ex: 38 rodadas, ou 6 rodadas
-  matchesPerRound Int? // Quantos jogos por rodada
-  currentStage    String @default("GROUPS") // GRUPOS, R16, QUARTASS, SEMIS, FINAL
-  rulesConfig     Json? // Guarda regras complexas (ex: { "classificam": 2, "ida_e_volta": true })
+  // Regras e Automação
+  totalRounds     Int?
+  matchesPerRound Int?
+  currentStage    String @default("GROUPS")
+  rulesConfig     Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -74,7 +76,7 @@ model Championship {
 }
 
 // =========================================================
-// 3. PARTICIPANTES
+// 3. PARTICIPANTES (TABELA DE CLASSIFICAÇÃO)
 // =========================================================
 
 model ChampionshipParticipant {
@@ -85,18 +87,20 @@ model ChampionshipParticipant {
   teamLogo  String?
   teamApiId Int?
 
-  group String? // Ex: "A", "B", "C"
+  group String? // Ex: "A", "B"
 
-  points        Int @default(0)
-  matchesPlayed Int @default(0)
-  wins          Int @default(0)
-  draws         Int @default(0)
-  losses        Int @default(0)
+  // --- ESTATÍSTICAS DA LIGA (ATUALIZADO) ---
+  points        Int @default(0) // P (Pontos na Tabela: 3, 1, 0)
+  matchesPlayed Int @default(0) // J (Jogos disputados)
+  wins          Int @default(0) // V (Vitórias)
+  draws         Int @default(0) // E (Empates)
+  losses        Int @default(0) // D (Derrotas)
 
-  predictionPoints Int @default(0)
-  pointsConceded   Int @default(0)
+  goalsScored    Int @default(0) // GP (Pontos Feitos nos Palpites)
+  goalsConceded  Int @default(0) // GC (Pontos Sofridos do Rival)
+  goalDifference Int @default(0) // SG (Saldo de Pontos)
 
-  // Opcional para permitir "Times Abandonados" ou "CPU"
+  // Relacionamentos
   userId String?
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -106,6 +110,8 @@ model ChampionshipParticipant {
   homeDuels Duel[] @relation("HomeParticipant")
   awayDuels Duel[] @relation("AwayParticipant")
   wonDuels  Duel[] @relation("DuelWinner")
+
+  @@unique([userId, championshipId])
 }
 
 // =========================================================
@@ -150,7 +156,7 @@ model Match {
   homeScore Int?
   awayScore Int?
 
-  details Json? // Gols, cartões, etc.
+  details Json?
 
   roundId String
   round   Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
@@ -171,8 +177,8 @@ model Duel {
   awayParticipantId String
   awayParticipant   ChampionshipParticipant @relation("AwayParticipant", fields: [awayParticipantId], references: [id])
 
-  homeScore Int @default(0) // Pontos que o Jogador A fez nos palpites
-  awayScore Int @default(0) // Pontos que o Jogador B fez nos palpites
+  homeScore Int @default(0)
+  awayScore Int @default(0)
 
   winnerId String?
   winner   ChampionshipParticipant? @relation("DuelWinner", fields: [winnerId], references: [id])
@@ -211,7 +217,7 @@ model Prediction {
 }
 
 // =========================================================
-// 8. NOTIFICAÇÕES E SOLICITAÇÕES
+// 8. EXTRAS
 // =========================================================
 
 model Notification {

@@ -6,6 +6,7 @@ import { InternalNavbar } from "@/components/internal-navbar"
 import { PredictionsForm } from "@/components/predictions-form"
 import { MatchSelector } from "@/components/match-selector"
 import { DeleteMatchButton } from "@/components/delete-match-button"
+import { AdminPredictionStatus } from "@/components/admin-prediction-status" // <--- 1. NOVO IMPORT
 
 export default async function RodadaPage({ params }: { params: Promise<{ slug: string, id: string }> }) {
     const { slug, id } = await params
@@ -22,17 +23,23 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
 
     if (!currentUser) redirect("/login")
 
-    // 2. Busca Rodada
+    // 2. Busca Rodada (ATUALIZADO PARA O PAINEL DE COBRANÇA)
     const round = await prisma.round.findUnique({
         where: { id },
         include: {
             matches: {
                 orderBy: { date: 'asc' },
                 include: {
-                    predictions: { where: { userId } }
+                    predictions: true // <--- Traz TODOS os palpites para o Admin contar
                 }
             },
-            championship: true
+            championship: {
+                include: {
+                    participants: {
+                        include: { user: true } // <--- Traz os nomes dos participantes para a lista
+                    }
+                }
+            }
         }
     })
 
@@ -74,9 +81,10 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
             const isHome = myDuel.homeParticipantId === myParticipation.id
             const opponentPart = isHome ? myDuel.awayParticipant : myDuel.homeParticipant
 
-            const opponentPredictions = await prisma.prediction.findMany({
-                where: { userId: opponentPart.userId!, roundId: id }
-            })
+            // Filtra palpites do oponente na lista carregada
+            const opponentPredictions = round.matches.map(m =>
+                m.predictions.find(p => p.userId === opponentPart.userId)
+            ).filter(Boolean)
 
             opponent = {
                 name: opponentPart.user?.name || "Sem Técnico",
@@ -155,6 +163,12 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
                 {/* --- ÁREA DE GESTÃO (ADMIN/DONO) --- */}
                 {canManage && (
                     <div className="mb-12 animate-in slide-in-from-top-4 duration-700 space-y-8">
+
+                        {/* 2. PAINEL DE COBRANÇA (WHATSAPP) */}
+                        <AdminPredictionStatus
+                            participants={round.championship.participants}
+                            round={round}
+                        />
 
                         {/* Seletor de Jogos */}
                         <div>
