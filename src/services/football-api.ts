@@ -74,7 +74,7 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
     return [];
 }
 
-// --- FUNÇÃO DE BUSCA POR DATA (COM CACHE CONTROLADO) ---
+// --- FUNÇÃO DE BUSCA POR DATA ---
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
 
@@ -109,12 +109,11 @@ export async function getLiveMatches(): Promise<any[]> {
     }));
 }
 
-// --- NOVA FUNÇÃO: BUSCA EM LOTE (CORREÇÃO DO PROBLEMA) ---
+// --- NOVA FUNÇÃO: BUSCA EM LOTE (COM FUSO HORÁRIO CORRIGIDO) ---
 export async function getMatchesByIds(ids: number[]): Promise<any[]> {
     if (ids.length === 0) return [];
 
     // A API aceita no máximo 20 IDs por vez separados por traço
-    // Vamos dividir em lotes de 20 para garantir que não falhe
     const batches = [];
     for (let i = 0; i < ids.length; i += 20) {
         batches.push(ids.slice(i, i + 20));
@@ -126,8 +125,8 @@ export async function getMatchesByIds(ids: number[]): Promise<any[]> {
         const idsString = batch.join('-');
         console.log(`⚡ [API] Buscando lote de jogos: ${idsString}`);
 
-        // Cache de 1 hora (3600) para garantir dados estáveis ao adicionar
-        const response = await fetchAPI(`/fixtures?ids=${idsString}`, 3600);
+        // AQUI ESTÁ A CORREÇÃO DO HORÁRIO: &timezone=America/Sao_Paulo
+        const response = await fetchAPI(`/fixtures?ids=${idsString}&timezone=America/Sao_Paulo`, 3600);
 
         if (response) {
             const formatted = response.map((item: any) => ({
