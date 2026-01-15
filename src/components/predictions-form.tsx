@@ -42,12 +42,14 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
     const totalMatches = round.matches.length
     const copyLimit = getCopyLimit(totalMatches)
 
+    // Lógica de contagem de cópias
     const currentCopies = opponent ? round.matches.reduce((count: number, match: any) => {
         const myPred = currentPredictions[match.id]
         const oppPred = opponent.predictions.find((p: any) => p.matchId === match.id)
 
         if (!myPred || !myPred.home || !myPred.away || !oppPred) return count;
 
+        // Compara os placares
         if (parseInt(myPred.home) === oppPred.homeScore && parseInt(myPred.away) === oppPred.awayScore) {
             return count + 1
         }
@@ -64,6 +66,14 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
                 [type]: value
             }
         }))
+    }
+
+    // --- AQUI ESTÁ A PROTEÇÃO CONTRA NEGATIVOS ---
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        // Bloqueia: sinal de menos, mais, ponto, virgula e 'e'
+        if (["-", "+", "e", "E", ".", ","].includes(e.key)) {
+            e.preventDefault()
+        }
     }
 
     async function handleUpdateResults() {
@@ -108,6 +118,7 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
                 </div>
             )}
 
+            {/* HEADER DO DUELO COM BARRA DE PROGRESSO */}
             {opponent ? (
                 <div className={`border rounded-xl p-5 mb-8 relative overflow-hidden transition-all ${isLimitExceeded ? 'bg-red-500/5 border-red-500/30' : 'bg-gradient-to-r from-[#1a1a1a] via-[#222] to-[#1a1a1a] border-white/10'}`}>
                     <div className="absolute top-0 right-0 p-4 opacity-[0.03] text-7xl font-black pointer-events-none select-none">VS</div>
@@ -133,6 +144,7 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
                             </div>
                         </div>
                     </div>
+                    {/* Barra de Progresso */}
                     <div className="w-full bg-black/40 h-1.5 rounded-full overflow-hidden relative z-10">
                         <div
                             className={`h-full transition-all duration-500 ${isLimitExceeded ? 'bg-red-500' : 'bg-emerald-500'}`}
@@ -208,17 +220,15 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
                                         <span className={`text-[10px] font-bold text-center leading-tight line-clamp-2 min-h-[2.5em] flex items-center ${isLocked ? 'text-gray-500' : 'text-gray-300'}`}>{match.homeTeam}</span>
                                     </div>
 
-                                    {/* ÁREA CENTRAL: INPUTS + VISUALIZAÇÃO DO RIVAL */}
+                                    {/* ÁREA CENTRAL: INPUTS */}
                                     <div className="flex flex-col items-center gap-2 relative z-10">
 
-                                        {/* Placar Real */}
                                         {(match.status === 'FINISHED' || match.status === 'LIVE') && (
                                             <div className="bg-black border border-white/20 px-3 py-0.5 rounded text-sm font-black text-emerald-400 mb-1 shadow-lg">
                                                 {match.homeScore ?? 0} - {match.awayScore ?? 0}
                                             </div>
                                         )}
 
-                                        {/* --- AQUI ESTÁ A NOVIDADE: PALPITE DO RIVAL --- */}
                                         {opponent && oppPred && !isLocked && (
                                             <div className="mb-2 flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in">
                                                 <span className="text-[8px] text-gray-500 font-bold uppercase tracking-widest mb-0.5">
@@ -232,13 +242,15 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
                                             </div>
                                         )}
 
-                                        {/* INPUTS (Seus Palpites) */}
                                         <div className="flex items-center gap-2">
                                             <input
                                                 type="number"
+                                                inputMode="numeric"
+                                                min="0" // Proteção 1
                                                 name={`home_${match.id}`}
                                                 defaultValue={userPred?.homeScore ?? ''}
                                                 disabled={isLocked}
+                                                onKeyDown={handleKeyDown} // Proteção 2 (Bloqueia tecla negativa)
                                                 onChange={(e) => handleInputChange(match.id, 'home', e.target.value)}
                                                 placeholder="-"
                                                 className={`w-12 h-12 rounded-lg text-center text-xl font-bold outline-none transition-all placeholder:text-gray-700 border
@@ -253,9 +265,12 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
                                             <span className="text-gray-600 font-black text-xs">X</span>
                                             <input
                                                 type="number"
+                                                inputMode="numeric"
+                                                min="0" // Proteção 1
                                                 name={`away_${match.id}`}
                                                 defaultValue={userPred?.awayScore ?? ''}
                                                 disabled={isLocked}
+                                                onKeyDown={handleKeyDown} // Proteção 2 (Bloqueia tecla negativa)
                                                 onChange={(e) => handleInputChange(match.id, 'away', e.target.value)}
                                                 placeholder="-"
                                                 className={`w-12 h-12 rounded-lg text-center text-xl font-bold outline-none transition-all placeholder:text-gray-700 border
@@ -269,7 +284,6 @@ export function PredictionsForm({ round, userId, isClosed, isAdmin, slug, oppone
                                             />
                                         </div>
 
-                                        {/* Aviso de Cópia */}
                                         {isCopied && !isLocked && (
                                             <span className="absolute -bottom-5 text-[9px] text-yellow-500 font-bold uppercase tracking-wide animate-in fade-in slide-in-from-top-1">
                                                 Igual ao Rival
