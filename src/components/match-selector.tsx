@@ -46,6 +46,7 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
         if (res?.success) {
             setMatches(res.matches || [])
         } else {
+            // Aqui mantemos message pois vem da action de fetch que pode ter estrutura diferente
             alert(res?.message || "Erro ao buscar jogos")
         }
     }
@@ -105,7 +106,8 @@ export function MatchSelector({ roundId, championshipSlug }: MatchSelectorProps)
             setSelectedMatches([]) // Limpa seleção
             alert("✅ Jogos adicionados com sucesso!")
         } else {
-            alert("Erro ao salvar: " + (res?.error || res?.message || "Erro desconhecido"))
+            // CORREÇÃO: Removido 'res?.message' para evitar erro de TypeScript
+            alert("Erro ao salvar: " + (res?.error || "Erro desconhecido"))
         }
     }
 
