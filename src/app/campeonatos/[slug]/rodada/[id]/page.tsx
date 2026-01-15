@@ -6,7 +6,7 @@ import { InternalNavbar } from "@/components/internal-navbar"
 import { PredictionsForm } from "@/components/predictions-form"
 import { MatchSelector } from "@/components/match-selector"
 import { DeleteMatchButton } from "@/components/delete-match-button"
-import { AdminPredictionStatus } from "@/components/admin-prediction-status" // <--- 1. NOVO IMPORT
+import { AdminPredictionStatus } from "@/components/admin-prediction-status"
 
 export default async function RodadaPage({ params }: { params: Promise<{ slug: string, id: string }> }) {
     const { slug, id } = await params
@@ -23,20 +23,20 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
 
     if (!currentUser) redirect("/login")
 
-    // 2. Busca Rodada (ATUALIZADO PARA O PAINEL DE COBRANÇA)
+    // 2. Busca Rodada
     const round = await prisma.round.findUnique({
         where: { id },
         include: {
             matches: {
                 orderBy: { date: 'asc' },
                 include: {
-                    predictions: true // <--- Traz TODOS os palpites para o Admin contar
+                    predictions: true
                 }
             },
             championship: {
                 include: {
                     participants: {
-                        include: { user: true } // <--- Traz os nomes dos participantes para a lista
+                        include: { user: true }
                     }
                 }
             }
@@ -49,7 +49,15 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
     const isOwner = round.championship.ownerId === userId
     const isAdmin = currentUser.role === 'ADMIN'
     const canManage = isOwner || isAdmin
-    const isClosed = new Date() > new Date(round.deadline) || round.status === 'FINISHED'
+
+    // --- CORREÇÃO DE FUSO HORÁRIO (AQUI ESTÁ O FIX) ---
+    // O servidor Vercel está em UTC (agora +3h em relação ao Brasil).
+    // Se o prazo é 15:59, o servidor acha que já passou se for 18:00 UTC.
+    // Adicionamos 3 horas ao prazo para "traduzir" para o tempo do servidor.
+    const deadlineDate = new Date(round.deadline)
+    const adjustedDeadline = new Date(deadlineDate.getTime() + (3 * 60 * 60 * 1000))
+
+    const isClosed = new Date() > adjustedDeadline || round.status === 'FINISHED'
 
     // 4. Busca Minha Participação
     const myParticipation = await prisma.championshipParticipant.findFirst({
@@ -130,7 +138,8 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
                                 <span className="text-lg">⏳</span>
                                 <p className="text-sm font-bold uppercase tracking-wide">
                                     Prazo: <span className={isClosed ? 'text-red-400' : 'text-emerald-400'}>
-                                        {new Date(round.deadline).toLocaleString('pt-BR')}
+                                        {/* Exibição normal (sem ajuste) porque o navegador cuida do fuso visualmente */}
+                                    {new Date(round.deadline).toLocaleString('pt-BR')}
                                     </span>
                                 </p>
                             </div>
