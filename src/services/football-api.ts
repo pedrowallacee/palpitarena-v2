@@ -58,56 +58,60 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
     return null;
 }
 
-// --- FUNÇÃO DE TIMES (ATUALIZADA PARA FILTRAR ELIMINADOS) ---
+// --- FUNÇÃO DE TIMES (100% FIEL À TABELA) ---
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
-    const seasons = [2025, 2024];
-    for (const season of seasons) {
+    // Definimos a temporada atual. Como você está em Jan/2026, a temporada ativa é a 2025 (2025-2026).
+    const currentSeason = 2025;
 
-        // 1. ESTRATÉGIA INTELIGENTE: Buscar via Tabela (Standings)
-        // Isso filtra automaticamente os times eliminados na pré-qualificação,
-        // pois eles não aparecem na tabela oficial da Fase de Liga/Grupos.
-        try {
-            console.log(`🔎 [API] Tentando buscar times via Tabela da liga ${leagueId}/${season}...`)
-            const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
+    console.log(`🔎 [API] Buscando times da liga ${leagueId} (Temporada ${currentSeason})...`)
 
-            if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
-                const standings = standingsRes[0].league.standings;
-                let teams: APITeam[] = [];
+    // ESTRATÉGIA 1: TABELA DE CLASSIFICAÇÃO (A MAIS SEGURA)
+    // Buscamos a tabela porque ela só contém os times da FASE ATUAL.
+    // Times eliminados na pré-qualificação NÃO aparecem na tabela de liga/grupos.
+    try {
+        const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${currentSeason}`, 3600);
 
-                // A API pode retornar arrays aninhados (ex: grupos A, B, C ou Tabela Única)
-                // Esse loop varre tudo e extrai os times
-                standings.forEach((groupOrTable: any[]) => {
-                    groupOrTable.forEach((position: any) => {
-                        teams.push({
-                            id: position.team.id,
-                            name: position.team.name,
-                            logo: position.team.logo
-                        });
+        if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
+            const standings = standingsRes[0].league.standings;
+            let teams: APITeam[] = [];
+
+            // A API retorna arrays diferentes para "Liga Única" ou "Grupos". Esse loop pega ambos.
+            standings.forEach((groupOrTable: any[]) => {
+                groupOrTable.forEach((position: any) => {
+                    teams.push({
+                        id: position.team.id,
+                        name: position.team.name,
+                        logo: position.team.logo
                     });
                 });
+            });
 
-                // Se achamos um número razoável de times (ex: >10), confiamos nessa lista!
-                if (teams.length >= 10) {
-                    console.log(`✅ [API] Sucesso! ${teams.length} times encontrados na Tabela.`);
-                    return teams;
-                }
+            // Se achou times na tabela, RETORNA ELES IMEDIATAMENTE.
+            // Não buscamos mais nada para evitar sujeira.
+            if (teams.length > 0) {
+                console.log(`✅ [API] Times filtrados pela Tabela Oficial: ${teams.length} times.`);
+                return teams;
             }
-        } catch (err) {
-            console.warn("⚠️ Tabela indisponível, tentando método padrão...", err);
         }
-
-        // 2. ESTRATÉGIA PADRÃO (FALLBACK)
-        // Se não tem tabela (ex: pré-temporada), pegamos a lista completa de inscritos.
-        const response = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
-        if (response && response.length > 0) {
-            console.log(`⚠️ [API] Usando lista bruta de times (${response.length} encontrados).`);
-            return response.map((item: any) => ({
-                id: item.team.id,
-                name: item.team.name,
-                logo: item.team.logo
-            }));
-        }
+    } catch (err) {
+        console.warn("⚠️ Falha ao buscar tabela, tentando método alternativo...");
     }
+
+    // ESTRATÉGIA 2: LISTA DE INSCRITOS (FALLBACK)
+    // Só usamos isso se a Tabela estiver vazia (ex: campeonato não começou).
+    // Aqui realmente pode vir times eliminados, mas é melhor que lista vazia.
+    console.log(`⚠️ [API] Tabela vazia. Buscando lista geral de inscritos...`);
+    const response = await fetchAPI(`/teams?league=${leagueId}&season=${currentSeason}`, 86400);
+
+    if (response && response.length > 0) {
+        console.log(`✅ [API] Lista geral retornou ${response.length} times.`);
+        return response.map((item: any) => ({
+            id: item.team.id,
+            name: item.team.name,
+            logo: item.team.logo
+        }));
+    }
+
     return [];
 }
 
@@ -150,7 +154,6 @@ export async function getLiveMatches(): Promise<any[]> {
 export async function getMatchesByIds(ids: number[]): Promise<any[]> {
     if (ids.length === 0) return [];
 
-    // A API aceita no máximo 20 IDs por vez separados por traço
     const batches = [];
     for (let i = 0; i < ids.length; i += 20) {
         batches.push(ids.slice(i, i + 20));
@@ -162,7 +165,6 @@ export async function getMatchesByIds(ids: number[]): Promise<any[]> {
         const idsString = batch.join('-');
         console.log(`⚡ [API] Buscando lote de jogos: ${idsString}`);
 
-        // AQUI ESTÁ A CORREÇÃO DO HORÁRIO: &timezone=America/Sao_Paulo
         const response = await fetchAPI(`/fixtures?ids=${idsString}&timezone=America/Sao_Paulo`, 3600);
 
         if (response) {
