@@ -6,7 +6,7 @@ import { calculatePoints } from "@/utils/scoring"
 import { getMatchesByDate, getLiveMatches } from "@/services/football-api"
 
 export async function updateRoundResultsAction(roundId: string, slug: string) {
-    console.log("🚀 [DEBUG] Iniciando atualização (MODO LIGA COMPLETA):", roundId)
+    console.log("🚀 [DEBUG] Iniciando atualização (MODO LIGA V3 - BLINDADO):", roundId)
 
     try {
         const round = await prisma.round.findUnique({
@@ -16,7 +16,7 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
 
         if (!round) return { success: false, message: "Rodada não encontrada" }
 
-        // --- 1. BUSCA DADOS NA API E ATUALIZA JOGOS (Blindagem de Data) ---
+        // --- 1. BUSCA DADOS NA API E ATUALIZA JOGOS ---
         const uniqueDates = new Set<string>()
         round.matches.forEach(m => {
             const dateStr = new Date(m.date).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
@@ -76,57 +76,53 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
         }
 
         // =================================================================================
-        // 🏆 AQUI É A MÁGICA: TABELA COMPLETA (P, J, V, E, D, GP, GC, SG)
+        // 🏆 ATUALIZAÇÃO DA LIGA (CORRIGIDA)
         // =================================================================================
 
         console.log("⚔️ [LIGA] Processando Duelos e Estatísticas...")
 
-        // A. Primeiro, atualiza o placar DO DUELO ATUAL (Ex: 9 x 4)
+        // A. Atualiza placares e STATUS do duelo
         const currentDuels = await prisma.duel.findMany({ where: { roundId }, include: { homeParticipant: true, awayParticipant: true } })
 
         for (const duel of currentDuels) {
+            // CORREÇÃO: Verifica se userId existe antes de buscar
+            if (!duel.homeParticipant.userId || !duel.awayParticipant.userId) continue
+
             const homePoints = await prisma.prediction.aggregate({ _sum: { pointsEarned: true }, where: { userId: duel.homeParticipant.userId, match: { roundId } } })
             const awayPoints = await prisma.prediction.aggregate({ _sum: { pointsEarned: true }, where: { userId: duel.awayParticipant.userId, match: { roundId } } })
 
+            const finalHome = homePoints._sum?.pointsEarned ?? 0
+            const finalAway = awayPoints._sum?.pointsEarned ?? 0
+
             await prisma.duel.update({
                 where: { id: duel.id },
-                data: { homeScore: homePoints._sum.pointsEarned || 0, awayScore: awayPoints._sum.pointsEarned || 0 }
+                data: {
+                    homeScore: finalHome,
+                    awayScore: finalAway,
+                    status: 'FINISHED'
+                }
             })
         }
 
-        // B. Agora, RECALCULA A TABELA INTEIRA (do zero, para garantir que não tenha erro)
-        // Pegamos todos os participantes do campeonato
+        // B. Recalcula a tabela inteira
         const participants = await prisma.championshipParticipant.findMany({
             where: { championshipId: round.championshipId }
         })
 
         for (const p of participants) {
-            // Busca TODOS os duelos desse cara que JÁ TERMINARAM (têm placar)
-            // Isso inclui a rodada atual e as passadas
             const myDuels = await prisma.duel.findMany({
                 where: {
                     OR: [{ homeParticipantId: p.id }, { awayParticipantId: p.id }],
-                    homeScore: { not: null },
-                    awayScore: { not: null }
+                    status: 'FINISHED'
                 }
             })
 
-            // Zera as estatísticas para recalcular
-            let stats = {
-                P: 0,  // Pontos (3, 1, 0)
-                J: 0,  // Jogos
-                V: 0,  // Vitórias
-                E: 0,  // Empates
-                D: 0,  // Derrotas
-                GP: 0, // Gols Pró (Pontos de palpite feitos)
-                GC: 0, // Gols Contra (Pontos de palpite sofridos)
-                SG: 0  // Saldo
-            }
+            let stats = { P: 0, J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, SG: 0 }
 
             for (const d of myDuels) {
                 const isHome = d.homeParticipantId === p.id
-                const myScore = isHome ? (d.homeScore || 0) : (d.awayScore || 0) // Meus pontos na rodada
-                const oppScore = isHome ? (d.awayScore || 0) : (d.homeScore || 0) // Pontos dele
+                const myScore = isHome ? (d.homeScore || 0) : (d.awayScore || 0)
+                const oppScore = isHome ? (d.awayScore || 0) : (d.homeScore || 0)
 
                 stats.J++
                 stats.GP += myScore
@@ -139,14 +135,12 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
                     stats.P += 1
                     stats.E++
                 } else {
-                    // Derrota não ganha ponto
                     stats.D++
                 }
             }
-
             stats.SG = stats.GP - stats.GC
 
-            // Salva no banco a tabela atualizada
+            // Se 'goalsScored' ainda estiver vermelho, é só rodar 'npx prisma generate'
             await prisma.championshipParticipant.update({
                 where: { id: p.id },
                 data: {
