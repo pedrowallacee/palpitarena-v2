@@ -58,12 +58,49 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
     return null;
 }
 
-// --- FUNÇÕES DE TIMES ---
+// --- FUNÇÃO DE TIMES (ATUALIZADA PARA FILTRAR ELIMINADOS) ---
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
     const seasons = [2025, 2024];
     for (const season of seasons) {
+
+        // 1. ESTRATÉGIA INTELIGENTE: Buscar via Tabela (Standings)
+        // Isso filtra automaticamente os times eliminados na pré-qualificação,
+        // pois eles não aparecem na tabela oficial da Fase de Liga/Grupos.
+        try {
+            console.log(`🔎 [API] Tentando buscar times via Tabela da liga ${leagueId}/${season}...`)
+            const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
+
+            if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
+                const standings = standingsRes[0].league.standings;
+                let teams: APITeam[] = [];
+
+                // A API pode retornar arrays aninhados (ex: grupos A, B, C ou Tabela Única)
+                // Esse loop varre tudo e extrai os times
+                standings.forEach((groupOrTable: any[]) => {
+                    groupOrTable.forEach((position: any) => {
+                        teams.push({
+                            id: position.team.id,
+                            name: position.team.name,
+                            logo: position.team.logo
+                        });
+                    });
+                });
+
+                // Se achamos um número razoável de times (ex: >10), confiamos nessa lista!
+                if (teams.length >= 10) {
+                    console.log(`✅ [API] Sucesso! ${teams.length} times encontrados na Tabela.`);
+                    return teams;
+                }
+            }
+        } catch (err) {
+            console.warn("⚠️ Tabela indisponível, tentando método padrão...", err);
+        }
+
+        // 2. ESTRATÉGIA PADRÃO (FALLBACK)
+        // Se não tem tabela (ex: pré-temporada), pegamos a lista completa de inscritos.
         const response = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
         if (response && response.length > 0) {
+            console.log(`⚠️ [API] Usando lista bruta de times (${response.length} encontrados).`);
             return response.map((item: any) => ({
                 id: item.team.id,
                 name: item.team.name,
@@ -74,7 +111,7 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
     return [];
 }
 
-// --- FUNÇÃO DE BUSCA POR DATA ---
+// --- FUNÇÃO DE BUSCA POR DATA (COM FUSO CORRIGIDO) ---
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
 
@@ -109,7 +146,7 @@ export async function getLiveMatches(): Promise<any[]> {
     }));
 }
 
-// --- NOVA FUNÇÃO: BUSCA EM LOTE (COM FUSO HORÁRIO CORRIGIDO) ---
+// --- FUNÇÃO DE BUSCA EM LOTE (COM FUSO CORRIGIDO) ---
 export async function getMatchesByIds(ids: number[]): Promise<any[]> {
     if (ids.length === 0) return [];
 
