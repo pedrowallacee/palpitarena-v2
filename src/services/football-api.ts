@@ -59,40 +59,36 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
 }
 
 // =====================================================================
-// 🕵️‍♂️ DETETIVE DE TEMPORADA (Descobre qual ano está valendo)
+// 🕵️‍♂️ DESCOBRIR TEMPORADA ATUAL (O SEGREDO UNIVERSAL)
 // =====================================================================
-async function getCurrentSeasonYear(leagueId: number): Promise<number | null> {
-    // Busca informações da liga para saber qual temporada está com "current: true"
+async function getCurrentSeasonYear(leagueId: number): Promise<number> {
+    // Pergunta para a API: "Qual temporada está ativa (current=true) para esta liga?"
     const response = await fetchAPI(`/leagues?id=${leagueId}&current=true`, 86400); // Cache de 1 dia
 
     if (response && response.length > 0 && response[0].seasons && response[0].seasons.length > 0) {
         const currentSeason = response[0].seasons[0].year;
-        console.log(`📅 [API] A temporada ativa da Liga ${leagueId} é: ${currentSeason}`);
+        console.log(`📅 [API] Liga ${leagueId} está na temporada: ${currentSeason}`);
         return currentSeason;
     }
 
-    // Se falhar, retorna null (vamos tentar um fallback manual depois)
-    return null;
+    // Se a API falhar ou não retornar nada, usamos o ano atual como "chute" de segurança
+    const currentYear = new Date().getFullYear();
+    console.warn(`⚠️ [API] Não foi possível detectar temporada. Usando ano atual: ${currentYear}`);
+    return currentYear;
 }
 
 // =====================================================================
-// 🏆 FUNÇÃO DE TIMES - MODO "SNIPER" (PRECISÃO MÁXIMA)
+// 🏆 BUSCAR TIMES (INTELIGENTE E UNIVERSAL)
 // =====================================================================
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
 
-    // PASSO 1: Descobrir o ano correto dinamicamente
-    let targetSeason = await getCurrentSeasonYear(leagueId);
+    // 1. Descobrir qual ano devemos buscar (Sem adivinhar!)
+    const targetSeason = await getCurrentSeasonYear(leagueId);
 
-    // Fallback de segurança: Se a API não disser qual é a atual, tentamos 2025 (estamos em 2026, mas a temporada europeia é 25/26)
-    if (!targetSeason) {
-        console.warn(`⚠️ [API] Não foi possível detectar temporada atual. Tentando 2025...`);
-        targetSeason = 2025;
-    }
+    console.log(`🔎 [API] Buscando times da Liga ${leagueId} (Temporada ${targetSeason})...`)
 
-    // PASSO 2: Buscar a TABELA daquele ano específico
-    // A tabela é a única fonte da verdade sobre quem está jogando AGORA.
-    console.log(`🔎 [API] Buscando TABELA da Liga ${leagueId} na temporada ${targetSeason}...`)
-
+    // 2. TENTATIVA A: BUSCAR VIA TABELA (STANDINGS)
+    // A tabela é a "Prova Real". Quem está nela, está jogando o campeonato.
     try {
         const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${targetSeason}`, 3600);
 
@@ -100,7 +96,7 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
             const standings = standingsRes[0].league.standings;
             let teams: APITeam[] = [];
 
-            // Extrai times de todos os grupos/tabelas
+            // Extrai times de todos os grupos ou tabela única
             standings.forEach((groupOrTable: any[]) => {
                 groupOrTable.forEach((position: any) => {
                     teams.push({
@@ -111,10 +107,11 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
                 });
             });
 
+            // Se a tabela tem times, confiamos nela 100%
             if (teams.length >= 2) {
-                // Remove duplicatas (segurança extra)
+                // Remove duplicatas
                 const uniqueTeams = Array.from(new Map(teams.map(t => [t.id, t])).values());
-                console.log(`✅ [API] Sucesso! ${uniqueTeams.length} times ativos na Tabela ${targetSeason}.`);
+                console.log(`✅ [API] Sucesso! ${uniqueTeams.length} times vindos da Tabela.`);
                 return uniqueTeams;
             }
         }
@@ -122,12 +119,13 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
         console.warn(`⚠️ Erro ao processar tabela:`, err);
     }
 
-    // PASSO 3: LISTA DE TIMES (Último recurso)
-    // Se a tabela falhar (ex: campeonato não começou), pegamos a lista de times inscritos NAQUELE ANO EXATO.
+    // 3. TENTATIVA B: LISTA DE TIMES (INSCRITOS)
+    // Se a tabela veio vazia (campeonato não começou ou erro na API), pegamos a lista oficial de times.
     console.log(`⚠️ [FALLBACK] Tabela vazia. Buscando lista de inscritos em ${targetSeason}...`);
     const fallbackRes = await fetchAPI(`/teams?league=${leagueId}&season=${targetSeason}`, 86400);
 
     if (fallbackRes && fallbackRes.length > 0) {
+        console.log(`✅ [API] Lista de inscritos retornou ${fallbackRes.length} times.`);
         return fallbackRes.map((item: any) => ({
             id: item.team.id,
             name: item.team.name,
@@ -138,7 +136,7 @@ export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
     return [];
 }
 
-// --- OUTRAS FUNÇÕES (MANTIDAS IGUAIS) ---
+// --- OUTRAS FUNÇÕES (MANTIDAS COM FUSO HORÁRIO CORRIGIDO) ---
 
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
@@ -179,6 +177,7 @@ export async function getMatchesByIds(ids: number[]): Promise<any[]> {
     for (const batch of batches) {
         const idsString = batch.join('-');
         console.log(`⚡ [API] Buscando lote de jogos: ${idsString}`);
+        // Fuso horário mantido
         const response = await fetchAPI(`/fixtures?ids=${idsString}&timezone=America/Sao_Paulo`, 3600);
         if (response) {
             const formatted = response.map((item: any) => ({
