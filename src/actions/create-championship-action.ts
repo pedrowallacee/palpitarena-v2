@@ -1,102 +1,219 @@
-'use server'
+// src/services/football-api.ts
 
-import { prisma } from "@/lib/prisma"
-import { cookies } from "next/headers"
-import { revalidatePath } from "next/cache"
+const CREDENTIALS = [
+    {
+        key: process.env.FOOTBALL_KEY_1,
+        baseUrl: "https://v3.football.api-sports.io",
+        host: "v3.football.api-sports.io",
+        authHeader: "x-apisports-key"
+    },
+    {
+        key: process.env.FOOTBALL_KEY_2,
+        baseUrl: "https://v3.football.api-sports.io",
+        host: "v3.football.api-sports.io",
+        authHeader: "x-apisports-key"
+    },
+    {
+        key: process.env.FOOTBALL_KEY_3,
+        baseUrl: "https://api-football-v1.p.rapidapi.com/v3",
+        host: "api-football-v1.p.rapidapi.com",
+        authHeader: "x-rapidapi-key"
+    }
+];
 
-// --- FUNÇÕES AUXILIARES ---
-
-// Gera um código de convite único (Ex: X9A2B)
-function generateInviteCode() {
-    return Math.random().toString(36).substring(2, 8).toUpperCase()
+export type APITeam = {
+    id: number
+    name: string
+    logo: string
 }
 
-// Gera URL amigável (Ex: "premier-league-do-pedro-123")
-function generateSlug(name: string) {
-    return name
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") // Remove acentos
-            .replace(/[^\w\s-]/g, "") // Remove caracteres especiais
-            .replace(/\s+/g, "-") // Troca espaço por traço
-        + "-" + Math.floor(Math.random() * 1000) // Adiciona número aleatório
-}
+// --- MAPA DE EXPANSÃO (SUPER BUSCA) ---
+const EXPANDED_LEAGUES: Record<number, number[]> = {
+    // 🇧🇷 BRASIL (Série A + B + C + D)
+    71: [71, 72, 75, 76],
+    // 🏴󠁧󠁢󠁥󠁮󠁧󠁿 INGLATERRA (Premier + Championship + League One + League Two)
+    39: [39, 40, 41, 42],
+    // 🇪🇸 ESPANHA (La Liga + La Liga 2)
+    140: [140, 141],
+    // 🇩🇪 ALEMANHA (Bundesliga + 2. Bundesliga)
+    78: [78, 79],
+    // 🇮🇹 ITÁLIA (Serie A + Serie B)
+    135: [135, 136],
+    // 🇫🇷 FRANÇA (Ligue 1 + Ligue 2)
+    61: [61, 62],
+    // 🇵🇹 PORTUGAL (Liga Portugal + Liga Portugal 2)
+    94: [94, 95],
+    // 🇳🇱 HOLANDA (Eredivisie + Eerste Divisie)
+    88: [88, 89]
+};
 
-// --- ACTION PRINCIPAL ---
+async function fetchAPI(endpoint: string, cacheDuration = 3600) {
+    for (const [index, cred] of CREDENTIALS.entries()) {
+        if (!cred.key) continue;
 
-export async function createChampionshipAction(formData: FormData) {
-    const cookieStore = await cookies()
-    const userId = cookieStore.get("palpita_session")?.value
+        try {
+            const res = await fetch(`${cred.baseUrl}${endpoint}`, {
+                method: "GET",
+                headers: {
+                    [cred.authHeader]: cred.key,
+                    "x-rapidapi-host": cred.host
+                },
+                next: { revalidate: cacheDuration }
+            });
 
-    if (!userId) {
-        return { success: false, message: "Você precisa estar logado." }
-    }
+            const data = await res.json();
 
-    // 1. Coletar dados do Formulário
-    const name = formData.get("name") as string
-    const leagueType = formData.get("leagueType") as string
-    const whatsapp = formData.get("whatsapp") as string
-    const format = formData.get("format") as string
-    const maxParticipants = formData.get("maxParticipants") as string
-    const adminParticipates = formData.get("adminParticipates") as string
-
-    // Validação simples
-    if (!name || !leagueType || !format) {
-        return { success: false, message: "Preencha os campos obrigatórios." }
-    }
-
-    try {
-        // 2. Preparar dados
-        const slug = generateSlug(name)
-        const code = generateInviteCode()
-        const limit = parseInt(maxParticipants) || 20
-
-        // 3. Buscar dados do usuário (para pegar o nome dele se for jogar)
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { name: true, image: true }
-        })
-
-        if (!user) return { success: false, message: "Usuário não encontrado." }
-
-        // 4. CRIAR O CAMPEONATO (VOCÊ COMO DONO)
-        const championship = await prisma.championship.create({
-            data: {
-                name,
-                slug,
-                description: `Campeonato de ${leagueType} organizado por ${user.name}.`,
-                leagueType,
-                code,
-                format: format as any, // Garante compatibilidade com o Enum do banco
-                maxParticipants: limit,
-                adminPhone: whatsapp,
-                ownerId: userId, // <--- AQUI ESTÁ O PODER DE ADMIN
-                status: "ACTIVE", // O Campeonato tem status, isso está correto.
-
-                // Configurações lógicas
-                hasGroupStage: format === 'GROUPS' || format === 'CUP',
-                hasKnockout: format === 'KNOCKOUT' || format === 'CUP' || format === 'GROUPS'
+            if (data.errors && Object.keys(data.errors).length > 0) {
+                continue;
             }
-        })
+            if (!data.response) continue;
 
-        // 5. INSERIR O ADMIN COMO JOGADOR (SE ELE QUISER)
-        if (adminParticipates === "yes") {
-            await prisma.championshipParticipant.create({
-                data: {
-                    userId: userId,
-                    championshipId: championship.id,
-                    teamName: user.name || "Time do Admin",
-                    teamLogo: user.image,
-                }
-            })
+            return data.response;
+
+        } catch (error) {
+            console.error(`🔥 [API CRASH] Erro na credencial #${index + 1}:`, error);
         }
-
-        // 6. Atualizar Cache e Retornar
-        revalidatePath("/dashboard")
-        return { success: true, redirectUrl: `/campeonatos/${slug}` }
-
-    } catch (error) {
-        console.error("Erro ao criar campeonato:", error)
-        return { success: false, message: "Erro interno. Tente um nome diferente." }
     }
+    return null;
+}
+
+// =====================================================================
+// 🕵️‍♂️ BUSCA INTELIGENTE POR LIGA (Com Fallback de Anos)
+// =====================================================================
+async function fetchTeamsFromSingleLeague(leagueId: number): Promise<APITeam[]> {
+
+    // Lista de temporadas para tentar (na ordem de prioridade)
+    // 1. Temporada 2025 (Atual Europa / Passada Brasil)
+    // 2. Temporada 2026 (Futura/Atual Brasil)
+    // 3. Temporada 2024 (Segurança)
+    const seasonsToTry = [2025, 2026, 2024];
+
+    // console.log(`🔎 [API] Varrendo Liga ${leagueId} nas temporadas: [${seasonsToTry.join(', ')}]`);
+
+    for (const season of seasonsToTry) {
+
+        // TENTATIVA A: TABELA (Standings) - Prioridade Máxima
+        try {
+            const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
+
+            if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
+                let teams: APITeam[] = [];
+                standingsRes[0].league.standings.forEach((groupOrTable: any[]) => {
+                    groupOrTable.forEach((pos: any) => {
+                        teams.push({ id: pos.team.id, name: pos.team.name, logo: pos.team.logo });
+                    });
+                });
+
+                // Se achou um número bom de times (ex: >=4), retorna e para de procurar!
+                if (teams.length >= 4) {
+                    // console.log(`✅ [SUCESSO] Liga ${leagueId} encontrada via Tabela ${season} (${teams.length} times).`);
+                    return teams;
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        // TENTATIVA B: LISTA GERAL (Teams) - Plano B
+        try {
+            const teamsRes = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
+            if (teamsRes && teamsRes.length > 4) {
+                // console.log(`✅ [SUCESSO] Liga ${leagueId} encontrada via Lista Geral ${season} (${teamsRes.length} times).`);
+                return teamsRes.map((item: any) => ({
+                    id: item.team.id,
+                    name: item.team.name,
+                    logo: item.team.logo
+                }));
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    console.warn(`⚠️ [AVISO] Nenhum time encontrado para a Liga ${leagueId} após tentar todas as temporadas.`);
+    return [];
+}
+
+// =====================================================================
+// 🚀 PRINCIPAL: SUPER BUSCA (Expansão + Cascata)
+// =====================================================================
+export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
+
+    // 1. Identifica quais ligas buscar (Ex: Se for Brasil A, busca A+B+C+D)
+    const leaguesToFetch = EXPANDED_LEAGUES[leagueId] || [leagueId];
+
+    console.log(`⚡ [SUPER BUSCA] Liga ${leagueId} -> Expandindo para: [${leaguesToFetch.join(', ')}]`);
+
+    // 2. Busca todas em paralelo
+    const promises = leaguesToFetch.map(id => fetchTeamsFromSingleLeague(id));
+    const results = await Promise.all(promises);
+
+    // 3. Junta os resultados num array único
+    let allTeams: APITeam[] = results.flat();
+
+    // 4. Remove Duplicatas (Pelo ID do time)
+    const uniqueTeams = Array.from(new Map(allTeams.map(team => [team.id, team])).values());
+
+    // 5. Ordena Alfabeticamente
+    uniqueTeams.sort((a, b) => a.name.localeCompare(b.name));
+
+    console.log(`✅ [FINAL] Total de times únicos retornados: ${uniqueTeams.length}`);
+    return uniqueTeams;
+}
+
+// --- OUTRAS FUNÇÕES (MANTIDAS IGUAIS) ---
+
+export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
+    const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
+    if (!response) return [];
+    return response.map((item: any) => ({
+        apiId: item.fixture.id,
+        homeTeam: item.teams.home.name,
+        awayTeam: item.teams.away.name,
+        homeLogo: item.teams.home.logo,
+        awayLogo: item.teams.away.logo,
+        date: item.fixture.date,
+        leagueName: item.league.name,
+        leagueLogo: item.league.logo,
+        status: item.fixture.status.short,
+        homeScore: item.goals.home,
+        awayScore: item.goals.away
+    }));
+}
+
+export async function getLiveMatches(): Promise<any[]> {
+    const response = await fetchAPI(`/fixtures?live=all`, 0);
+    if (!response) return [];
+    return response.map((item: any) => ({
+        apiId: item.fixture.id.toString(),
+        status: item.fixture.status.short,
+        homeScore: item.goals.home,
+        awayScore: item.goals.away,
+        elapsed: item.fixture.status.elapsed
+    }));
+}
+
+export async function getMatchesByIds(ids: number[]): Promise<any[]> {
+    if (ids.length === 0) return [];
+    const batches = [];
+    for (let i = 0; i < ids.length; i += 20) batches.push(ids.slice(i, i + 20));
+
+    let allMatches: any[] = [];
+    for (const batch of batches) {
+        const idsString = batch.join('-');
+        const response = await fetchAPI(`/fixtures?ids=${idsString}&timezone=America/Sao_Paulo`, 3600);
+        if (response) {
+            const formatted = response.map((item: any) => ({
+                apiId: item.fixture.id,
+                homeTeam: item.teams.home.name,
+                awayTeam: item.teams.away.name,
+                homeLogo: item.teams.home.logo,
+                awayLogo: item.teams.away.logo,
+                date: item.fixture.date,
+                leagueName: item.league.name,
+                leagueLogo: item.league.logo,
+                status: item.fixture.status.short,
+                homeScore: item.goals.home,
+                awayScore: item.goals.away
+            }));
+            allMatches = [...allMatches, ...formatted];
+        }
+    }
+    return allMatches;
 }
