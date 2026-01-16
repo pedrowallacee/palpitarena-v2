@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { joinChampionshipAction } from "@/actions/join-championship"
-import { searchTeamAction } from "@/actions/search-team-action" // <--- A NOVA ACTION
-import { Search, Loader2, X, Trophy } from "lucide-react" // Ícones bonitos
+import { searchTeamAction } from "@/actions/search-team-action"
+import { Search, Loader2, X, Trophy, Edit2 } from "lucide-react"
 
 interface Team {
     id: number
@@ -13,25 +13,32 @@ interface Team {
 }
 
 interface TeamSelectorProps {
-    teams: Team[] // Times iniciais (da Liga)
+    teams: Team[]
     championshipId: string
-    takenTeams: Record<number, string> // Times já ocupados
+    takenTeams: Record<number, string>
 }
 
 export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }: TeamSelectorProps) {
-    // Estado da Lista de Times (Pode ser a da Liga ou o Resultado da Busca)
     const [currentTeams, setCurrentTeams] = useState<Team[]>(initialTeams)
-
-    // Estado da Seleção
     const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
+
+    // NOVO: Estado para o nome customizável do time
+    const [customTeamName, setCustomTeamName] = useState("")
+
     const [loading, setLoading] = useState(false)
     const [isSearchingApi, setIsSearchingApi] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
-    const [isCustomList, setIsCustomList] = useState(false) // Para saber se estamos vendo resultado de busca
+    const [isCustomList, setIsCustomList] = useState(false)
 
     const router = useRouter()
 
-    // --- FUNÇÃO DE BUSCA GLOBAL ---
+    // EFEITO: Quando selecionar um time, preenche o nome automaticamente para editar
+    useEffect(() => {
+        if (selectedTeam) {
+            setCustomTeamName(selectedTeam.name)
+        }
+    }, [selectedTeam])
+
     async function handleGlobalSearch() {
         if (!searchTerm || searchTerm.length < 3) {
             alert("Digite pelo menos 3 letras para buscar na base global.")
@@ -39,37 +46,41 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
         }
 
         setIsSearchingApi(true)
-        setSelectedTeam(null) // Limpa seleção anterior para evitar bugs
+        setSelectedTeam(null)
+        setCustomTeamName("")
 
-        // Chama a Server Action que criamos
         const res = await searchTeamAction(searchTerm)
 
         setIsSearchingApi(false)
 
         if (res.success && res.data.length > 0) {
-            setCurrentTeams(res.data) // Substitui a lista visual pelos resultados
-            setIsCustomList(true) // Marca que estamos no modo "Busca"
+            setCurrentTeams(res.data)
+            setIsCustomList(true)
         } else {
             alert(res.message || "Nenhum time encontrado na base global.")
         }
     }
 
-    // --- FUNÇÃO PARA LIMPAR BUSCA (VOLTAR PRA LIGA) ---
     function handleClearSearch() {
         setSearchTerm("")
-        setCurrentTeams(initialTeams) // Restaura a lista original
+        setCurrentTeams(initialTeams)
         setIsCustomList(false)
         setSelectedTeam(null)
+        setCustomTeamName("")
     }
 
-    // --- FUNÇÃO DE ENTRAR NO CAMPEONATO ---
     async function handleConfirm() {
         if (!selectedTeam) return
+        if (!customTeamName.trim()) return alert("O nome do time não pode ficar vazio.")
+
         setLoading(true)
 
         const formData = new FormData()
         formData.append("championshipId", championshipId)
-        formData.append("teamName", selectedTeam.name)
+
+        // AQUI ESTÁ O PULO DO GATO: Enviamos o nome que você editou, não o original
+        formData.append("teamName", customTeamName)
+
         formData.append("teamLogo", selectedTeam.logo)
         formData.append("teamApiId", selectedTeam.id.toString())
 
@@ -109,7 +120,6 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
                         {isSearchingApi ? <Loader2 className="w-5 h-5 animate-spin"/> : "Buscar"}
                     </button>
 
-                    {/* Botão de Fechar/Limpar (Só aparece se tiver feito uma busca) */}
                     {isCustomList && (
                         <button
                             onClick={handleClearSearch}
@@ -139,7 +149,7 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
 
             {/* --- GRID DE TIMES --- */}
             {currentTeams.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-32">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-36">
                     {currentTeams.map(team => {
                         const ownerName = takenTeams[team.id]
                         const isTaken = !!ownerName
@@ -159,14 +169,12 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
                                 }
                                 `}
                             >
-                                {/* Check de Selecionado */}
                                 {isSelected && (
                                     <div className="absolute top-3 right-3 bg-emerald-500 text-black rounded-full p-1 shadow-lg animate-in zoom-in">
                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"></path></svg>
                                     </div>
                                 )}
 
-                                {/* Badge de Ocupado */}
                                 {isTaken && (
                                     <div className="absolute top-2 right-2 bg-gray-800 text-gray-400 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase border border-gray-700">
                                         Ocupado
@@ -195,7 +203,6 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
                     })}
                 </div>
             ) : (
-                // Estado Vazio (Caso a busca não retorne nada ou a liga esteja vazia)
                 <div className="text-center py-24 bg-white/5 border border-white/5 border-dashed rounded-xl">
                     <p className="text-gray-500 font-medium">Nenhum time encontrado.</p>
                     {isCustomList && (
@@ -206,21 +213,38 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
                 </div>
             )}
 
-            {/* --- BARRA FLUTUANTE DE CONFIRMAÇÃO --- */}
-            <div className={`fixed bottom-0 left-0 right-0 bg-[#0f0f0f]/90 backdrop-blur-xl border-t border-white/10 p-4 transition-transform duration-300 z-50 ${selectedTeam ? 'translate-y-0' : 'translate-y-full'}`}>
-                <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-4 justify-between">
-                    <div className="flex items-center gap-4 hidden md:flex">
-                        {selectedTeam && <img src={selectedTeam.logo} className="w-12 h-12 object-contain" alt="Escudo" />}
-                        <div className="flex flex-col">
-                            <span className="text-gray-400 text-xs uppercase font-bold tracking-widest">Você escolheu:</span>
-                            <span className="text-white text-xl font-black uppercase">{selectedTeam?.name}</span>
+            {/* --- BARRA FLUTUANTE DE CONFIRMAÇÃO (COM EDIÇÃO DE NOME) --- */}
+            <div className={`fixed bottom-0 left-0 right-0 bg-[#0f0f0f]/95 backdrop-blur-xl border-t border-white/10 p-4 transition-transform duration-300 z-50 shadow-2xl ${selectedTeam ? 'translate-y-0' : 'translate-y-full'}`}>
+                <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-6 justify-between">
+
+                    {/* LADO ESQUERDO: ESCUDO + CAMPO DE EDIÇÃO */}
+                    <div className="flex items-center gap-4 w-full md:w-auto flex-1">
+                        {selectedTeam && (
+                            <div className="w-16 h-16 bg-white/5 rounded-lg p-2 border border-white/10 shrink-0">
+                                <img src={selectedTeam.logo} className="w-full h-full object-contain" alt="Escudo" />
+                            </div>
+                        )}
+
+                        <div className="flex flex-col w-full">
+                            <label className="text-emerald-500 text-[10px] uppercase font-bold tracking-widest mb-1 flex items-center gap-1">
+                                <Edit2 className="w-3 h-3"/>
+                                Nome do seu Time (Editável):
+                            </label>
+                            <input
+                                type="text"
+                                value={customTeamName}
+                                onChange={(e) => setCustomTeamName(e.target.value)}
+                                className="bg-transparent border-b-2 border-white/10 focus:border-emerald-500 text-white text-xl font-black uppercase w-full outline-none transition-colors placeholder:text-gray-700"
+                                placeholder="Digite o nome..."
+                            />
                         </div>
                     </div>
 
+                    {/* LADO DIREITO: BOTÃO DE AÇÃO */}
                     <button
                         onClick={handleConfirm}
-                        disabled={loading}
-                        className="w-full md:w-auto min-w-[300px] bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 px-8 rounded-xl uppercase tracking-widest text-sm shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all flex items-center justify-center gap-3 disabled:opacity-50 active:scale-95"
+                        disabled={loading || !customTeamName.trim()}
+                        className="w-full md:w-auto min-w-[280px] bg-emerald-500 hover:bg-emerald-400 text-black font-black py-4 px-8 rounded-xl uppercase tracking-widest text-sm shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shrink-0"
                     >
                         {loading ? (
                             <>
