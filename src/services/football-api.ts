@@ -29,13 +29,10 @@ export type APITeam = {
 
 async function fetchAPI(endpoint: string, cacheDuration = 3600) {
     for (const [index, cred] of CREDENTIALS.entries()) {
-        if (!cred.key) {
-            console.log(`⚠️ Chave #${index + 1} não configurada.`);
-            continue;
-        }
+        if (!cred.key) continue;
 
         try {
-            console.log(`📡 [API] Tentando credencial #${index + 1} para: ${endpoint}`);
+            // console.log(`📡 [API] Tentando credencial #${index + 1} para: ${endpoint}`);
 
             const res = await fetch(`${cred.baseUrl}${endpoint}`, {
                 method: "GET",
@@ -48,94 +45,111 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
 
             const data = await res.json();
 
-            // LOG DE ERRO (Crucial para a gente entender o que está rolando)
+            // Se der erro de limite (429/Too Many Requests), tenta a próxima chave
             if (data.errors && Object.keys(data.errors).length > 0) {
-                console.error(`⛔ [BLOQUEIO API] Chave #${index + 1}:`, JSON.stringify(data.errors));
-                continue; // Tenta a próxima chave
-            }
-
-            if (!data.response) {
-                console.warn(`⚠️ [VAZIO] Chave #${index + 1} retornou sem dados.`);
+                console.warn(`⚠️ [API LIMIT] Chave #${index + 1} bloqueada.`);
                 continue;
             }
+
+            if (!data.response) continue;
 
             return data.response;
 
         } catch (error) {
-            console.error(`🔥 [ERRO CRÍTICO] Chave #${index + 1} falhou:`, error);
+            console.error(`🔥 [API CRASH] Erro na credencial #${index + 1}:`, error);
         }
     }
     return null;
 }
 
 // =====================================================================
-// 🚜 BUSCA SIMPLIFICADA (SEM FIRULA)
+// 🚜 BUSCA DE TIMES POR LIGA (ROBUSTA & BLINDADA)
 // =====================================================================
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
 
-    // DEFINIÇÃO MANUAL DE TEMPORADAS SEGURAS (JANEIRO/2026)
-    // Europa (Premier, La Liga): Temporada 2025 (25/26) é a atual e cheia.
-    // Brasil (Brasileirão, Copa BR): Temporada 2025 é a última completa. 2026 pode estar vazia.
-    // SOLUÇÃO: Vamos focar em 2025 para TODOS. É o ano "mágico" agora.
-    const primarySeason = 2025;
-    const fallbackSeason = 2024;
+    // ESTRATÉGIA CASCATA DE TEMPORADAS:
+    // 1. 2025: Maioria das ligas europeias (25/26) e Brasileirão passado (garantido).
+    // 2. 2026: Brasileirão atual (pode estar vazio em jan/fev).
+    // 3. 2024: Fallback de segurança máxima.
+    const seasonsToTry = [2025, 2026, 2024];
 
-    console.log(`🏁 [START] Buscando times para Liga ${leagueId} (Foco em ${primarySeason})...`);
+    console.log(`🔎 [API] Iniciando busca para Liga ${leagueId}...`);
 
-    // TENTATIVA 1: TABELA 2025 (Melhor cenário)
-    try {
-        const standings = await fetchAPI(`/standings?league=${leagueId}&season=${primarySeason}`, 3600);
-        if (standings && standings.length > 0 && standings[0].league?.standings) {
-            let teams: APITeam[] = [];
-            standings[0].league.standings.forEach((group: any[]) => {
-                group.forEach((pos: any) => {
-                    teams.push({ id: pos.team.id, name: pos.team.name, logo: pos.team.logo });
+    for (const season of seasonsToTry) {
+
+        // TENTATIVA A: TABELA (Standings) -> Prioridade máxima (filtra times ativos)
+        try {
+            const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
+
+            if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
+                let teams: APITeam[] = [];
+                standingsRes[0].league.standings.forEach((groupOrTable: any[]) => {
+                    groupOrTable.forEach((pos: any) => {
+                        teams.push({ id: pos.team.id, name: pos.team.name, logo: pos.team.logo });
+                    });
                 });
-            });
-            if (teams.length > 4) {
-                // Remove duplicatas e retorna
-                const unique = Array.from(new Map(teams.map(t => [t.id, t])).values());
+
+                if (teams.length >= 4) {
+                    // Remove duplicatas e retorna
+                    const unique = Array.from(new Map(teams.map(t => [t.id, t])).values());
+                    unique.sort((a, b) => a.name.localeCompare(b.name));
+                    console.log(`✅ [SUCESSO] Liga ${leagueId} encontrada na Tabela ${season} (${unique.length} times).`);
+                    return unique;
+                }
+            }
+        } catch (e) { /* silent fail */ }
+
+        // TENTATIVA B: LISTA GERAL (Teams) -> Plano B se não tiver tabela
+        try {
+            const teamsRes = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
+            if (teamsRes && teamsRes.length > 4) {
+                const formatted = teamsRes.map((item: any) => ({
+                    id: item.team.id,
+                    name: item.team.name,
+                    logo: item.team.logo
+                }));
+                // Remove duplicatas
+                const unique = Array.from(new Map(formatted.map((t: any) => [t.id, t])).values()) as APITeam[];
                 unique.sort((a, b) => a.name.localeCompare(b.name));
-                console.log(`✅ [SUCESSO] ${unique.length} times encontrados na Tabela ${primarySeason}.`);
+
+                console.log(`✅ [SUCESSO] Liga ${leagueId} encontrada na Lista ${season} (${unique.length} times).`);
                 return unique;
             }
-        }
-    } catch (e) { console.error("Erro na tabela:", e); }
+        } catch (e) { /* silent fail */ }
+    }
 
-    // TENTATIVA 2: LISTA DE TIMES 2025
-    try {
-        const teamsList = await fetchAPI(`/teams?league=${leagueId}&season=${primarySeason}`, 86400);
-        if (teamsList && teamsList.length > 4) {
-            const formatted = teamsList.map((t: any) => ({
-                id: t.team.id,
-                name: t.team.name,
-                logo: t.team.logo
-            }));
-            console.log(`✅ [SUCESSO] ${formatted.length} times encontrados na Lista ${primarySeason}.`);
-            return formatted;
-        }
-    } catch (e) { console.error("Erro na lista:", e); }
-
-    // TENTATIVA 3: FALLBACK PARA 2024 (Se 2025 falhou total)
-    console.log(`⚠️ [FALLBACK] Tentando ano anterior (${fallbackSeason})...`);
-    try {
-        const fallbackList = await fetchAPI(`/teams?league=${leagueId}&season=${fallbackSeason}`, 86400);
-        if (fallbackList && fallbackList.length > 4) {
-            const formatted = fallbackList.map((t: any) => ({
-                id: t.team.id,
-                name: t.team.name,
-                logo: t.team.logo
-            }));
-            console.log(`✅ [SALVOS PELO GONGO] ${formatted.length} times encontrados em ${fallbackSeason}.`);
-            return formatted;
-        }
-    } catch (e) { /* silent */ }
-
-    console.error(`❌ [FALHA TOTAL] Nenhum time encontrado para a Liga ${leagueId}.`);
+    console.warn(`⚠️ [AVISO] Nenhum time encontrado para a Liga ${leagueId} em 2025/26/24.`);
     return [];
 }
 
-// --- OUTRAS FUNÇÕES ---
+// =====================================================================
+// 🔍 NOVA FUNÇÃO: BUSCAR TIME POR NOME (GLOBAL)
+// =====================================================================
+export async function searchTeamByName(query: string): Promise<APITeam[]> {
+    if (!query || query.length < 3) return [];
+
+    console.log(`🔎 [API] Buscando time por nome: "${query}"...`);
+
+    try {
+        // A API exige pelo menos 3 caracteres para busca
+        const response = await fetchAPI(`/teams?search=${query}`, 86400); // Cache longo (os times não mudam de nome/logo todo dia)
+
+        if (response && response.length > 0) {
+            console.log(`✅ [BUSCA] Encontrados ${response.length} times para "${query}".`);
+            return response.map((item: any) => ({
+                id: item.team.id,
+                name: item.team.name,
+                logo: item.team.logo
+            }));
+        }
+    } catch (error) {
+        console.error("Erro na busca por nome:", error);
+    }
+
+    return [];
+}
+
+// --- OUTRAS FUNÇÕES DE JOGOS (MANTIDAS IGUAIS) ---
 
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
