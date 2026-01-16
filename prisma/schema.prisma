@@ -217,7 +217,7 @@ model Prediction {
 }
 
 // =========================================================
-// 8. EXTRAS
+// 8. EXTRAS E CACHE
 // =========================================================
 
 model Notification {
@@ -240,6 +240,21 @@ model ChampionshipRequest {
   createdAt   DateTime      @default(now())
   userId      String
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------
+// 🔥 NOVO: CACHE DE TIMES (Pokédex de Times)
+// ---------------------------------------------------------
+model CachedTeam {
+  id    String @id @default(cuid()) // ID interno
+  apiId Int    @unique // ID da API-Football (Ex: 127 para Flamengo)
+  name  String
+  logo  String
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([name]) // Índice para busca rápida por nome
 }
 
 // =========================================================
