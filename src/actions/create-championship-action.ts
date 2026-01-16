@@ -28,11 +28,12 @@ export type APITeam = {
 }
 
 // --- MAPA DE EXPANSÃO (SUPER BUSCA) ---
+// Adicionei mais IDs para garantir cobertura total
 const EXPANDED_LEAGUES: Record<number, number[]> = {
-    // 🇧🇷 BRASIL (Série A + B + C + D)
-    71: [71, 72, 75, 76],
-    // 🏴󠁧󠁢󠁥󠁮󠁧󠁿 INGLATERRA (Premier + Championship + League One + League Two)
-    39: [39, 40, 41, 42],
+    // 🇧🇷 BRASIL (Série A + B) - Removi C e D para evitar travar a API se tiver chave free
+    71: [71, 72],
+    // 🏴󠁧󠁢󠁥󠁮󠁧󠁿 INGLATERRA (Premier + Championship)
+    39: [39, 40],
     // 🇪🇸 ESPANHA (La Liga + La Liga 2)
     140: [140, 141],
     // 🇩🇪 ALEMANHA (Bundesliga + 2. Bundesliga)
@@ -41,11 +42,14 @@ const EXPANDED_LEAGUES: Record<number, number[]> = {
     135: [135, 136],
     // 🇫🇷 FRANÇA (Ligue 1 + Ligue 2)
     61: [61, 62],
-    // 🇵🇹 PORTUGAL (Liga Portugal + Liga Portugal 2)
+    // 🇵🇹 PORTUGAL (Liga Portugal + Liga 2)
     94: [94, 95],
-    // 🇳🇱 HOLANDA (Eredivisie + Eerste Divisie)
-    88: [88, 89]
+    // 🇳🇱 HOLANDA (Eredivisie)
+    88: [88]
 };
+
+// Pequena pausa para não estourar a API
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fetchAPI(endpoint: string, cacheDuration = 3600) {
     for (const [index, cred] of CREDENTIALS.entries()) {
@@ -63,9 +67,12 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
 
             const data = await res.json();
 
+            // Se der erro de API (limite excedido), loga e tenta a próxima chave
             if (data.errors && Object.keys(data.errors).length > 0) {
+                console.warn(`⚠️ [API LIMIT] Chave ${index + 1} bloqueada:`, JSON.stringify(data.errors));
                 continue;
             }
+
             if (!data.response) continue;
 
             return data.response;
@@ -82,17 +89,15 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
 // =====================================================================
 async function fetchTeamsFromSingleLeague(leagueId: number): Promise<APITeam[]> {
 
-    // Lista de temporadas para tentar (na ordem de prioridade)
-    // 1. Temporada 2025 (Atual Europa / Passada Brasil)
-    // 2. Temporada 2026 (Futura/Atual Brasil)
-    // 3. Temporada 2024 (Segurança)
+    // ORDEM DE TENTATIVA:
+    // 1. 2025 (Maioria das ligas ativas ou Brasil ano passado)
+    // 2. 2026 (Brasil ano atual - pode estar vazio em jan/fev)
+    // 3. 2024 (Fallback seguro)
     const seasonsToTry = [2025, 2026, 2024];
-
-    // console.log(`🔎 [API] Varrendo Liga ${leagueId} nas temporadas: [${seasonsToTry.join(', ')}]`);
 
     for (const season of seasonsToTry) {
 
-        // TENTATIVA A: TABELA (Standings) - Prioridade Máxima
+        // TENTATIVA A: TABELA (Standings)
         try {
             const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
 
@@ -104,19 +109,19 @@ async function fetchTeamsFromSingleLeague(leagueId: number): Promise<APITeam[]> 
                     });
                 });
 
-                // Se achou um número bom de times (ex: >=4), retorna e para de procurar!
                 if (teams.length >= 4) {
-                    // console.log(`✅ [SUCESSO] Liga ${leagueId} encontrada via Tabela ${season} (${teams.length} times).`);
+                    console.log(`✅ [SUCESSO] Liga ${leagueId} achada na Tabela ${season} (${teams.length} times).`);
                     return teams;
                 }
             }
         } catch (e) { /* ignore */ }
 
-        // TENTATIVA B: LISTA GERAL (Teams) - Plano B
+        // TENTATIVA B: LISTA GERAL (Teams)
+        // Só tenta isso se a tabela falhou
         try {
             const teamsRes = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
             if (teamsRes && teamsRes.length > 4) {
-                // console.log(`✅ [SUCESSO] Liga ${leagueId} encontrada via Lista Geral ${season} (${teamsRes.length} times).`);
+                console.log(`✅ [SUCESSO] Liga ${leagueId} achada na Lista ${season} (${teamsRes.length} times).`);
                 return teamsRes.map((item: any) => ({
                     id: item.team.id,
                     name: item.team.name,
@@ -126,34 +131,43 @@ async function fetchTeamsFromSingleLeague(leagueId: number): Promise<APITeam[]> 
         } catch (e) { /* ignore */ }
     }
 
-    console.warn(`⚠️ [AVISO] Nenhum time encontrado para a Liga ${leagueId} após tentar todas as temporadas.`);
+    console.warn(`⚠️ [AVISO] Liga ${leagueId} vazia em 2025, 2026 e 2024.`);
     return [];
 }
 
 // =====================================================================
-// 🚀 PRINCIPAL: SUPER BUSCA (Expansão + Cascata)
+// 🚀 PRINCIPAL: SUPER BUSCA SEQUENCIAL (Para não travar a API)
 // =====================================================================
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
 
-    // 1. Identifica quais ligas buscar (Ex: Se for Brasil A, busca A+B+C+D)
+    // 1. Identifica quais ligas buscar
     const leaguesToFetch = EXPANDED_LEAGUES[leagueId] || [leagueId];
+    console.log(`⚡ [BUSCA] Iniciando para ligas: [${leaguesToFetch.join(', ')}]`);
 
-    console.log(`⚡ [SUPER BUSCA] Liga ${leagueId} -> Expandindo para: [${leaguesToFetch.join(', ')}]`);
+    let allTeams: APITeam[] = [];
 
-    // 2. Busca todas em paralelo
-    const promises = leaguesToFetch.map(id => fetchTeamsFromSingleLeague(id));
-    const results = await Promise.all(promises);
+    // 2. BUSCA SEQUENCIAL (Um por um, com pausa)
+    // Isso evita o erro 429 (Too Many Requests)
+    for (const id of leaguesToFetch) {
+        const teams = await fetchTeamsFromSingleLeague(id);
+        allTeams = [...allTeams, ...teams];
 
-    // 3. Junta os resultados num array único
-    let allTeams: APITeam[] = results.flat();
+        // Pequena pausa de 200ms entre requisições para respirar
+        await delay(200);
+    }
 
-    // 4. Remove Duplicatas (Pelo ID do time)
+    // 3. Remove Duplicatas
     const uniqueTeams = Array.from(new Map(allTeams.map(team => [team.id, team])).values());
 
-    // 5. Ordena Alfabeticamente
+    // 4. Ordena Alfabeticamente
     uniqueTeams.sort((a, b) => a.name.localeCompare(b.name));
 
-    console.log(`✅ [FINAL] Total de times únicos retornados: ${uniqueTeams.length}`);
+    if (uniqueTeams.length === 0) {
+        console.error("❌ [ERRO CRÍTICO] Nenhum time encontrado após varredura completa.");
+    } else {
+        console.log(`✅ [FINAL] Total de times carregados: ${uniqueTeams.length}`);
+    }
+
     return uniqueTeams;
 }
 
