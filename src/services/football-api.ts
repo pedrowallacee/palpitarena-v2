@@ -44,7 +44,7 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
             const data = await res.json();
 
             if (data.errors && Object.keys(data.errors).length > 0) {
-                console.warn(`⚠️ [API ERR] Credencial #${index + 1}:`, JSON.stringify(data.errors));
+                // console.warn(`⚠️ [API ERR] Credencial #${index + 1}:`, JSON.stringify(data.errors));
                 continue;
             }
             if (!data.response) continue;
@@ -59,86 +59,63 @@ async function fetchAPI(endpoint: string, cacheDuration = 3600) {
 }
 
 // =====================================================================
-// 🕵️‍♂️ 1. DESCOBRIR TEMPORADA ATUAL (Documentação: Leagues endpoint)
-// =====================================================================
-async function getCurrentSeasonYear(leagueId: number): Promise<number> {
-    // Usamos o parâmetro 'current=true' conforme a documentação para pegar a temporada ativa
-    const response = await fetchAPI(`/leagues?id=${leagueId}&current=true`, 86400);
-
-    if (response && response.length > 0 && response[0].seasons && response[0].seasons.length > 0) {
-        const currentSeason = response[0].seasons[0].year;
-        console.log(`📅 [API] Liga ${leagueId} está na temporada oficial: ${currentSeason}`);
-        return currentSeason;
-    }
-
-    // Fallback: Se a API falhar, usamos o ano atual
-    return new Date().getFullYear();
-}
-
-// =====================================================================
-// 🏆 2. BUSCAR TIMES (Prioridade: Tabela / Standings)
+// 🚜 FUNÇÃO DE TIMES - MODO FORÇA BRUTA (Tenta tudo até achar)
 // =====================================================================
 export async function getTeamsByLeague(leagueId: number): Promise<APITeam[]> {
 
-    // Passo A: Descobrir o ano correto OFICIAL
-    const targetSeason = await getCurrentSeasonYear(leagueId);
+    // Lista de temporadas para testar na ordem de prioridade.
+    // 2025: Temporada atual da Europa (25/26)
+    // 2026: Temporada atual do Brasil/Américas (2026)
+    // 2024: Temporada passada (Backup de segurança)
+    const seasonsToTry = [2025, 2026, 2024];
 
-    console.log(`🔎 [API] Buscando times da Liga ${leagueId} na temporada ${targetSeason}...`)
+    console.log(`🔎 [API] Iniciando varredura para a Liga ${leagueId}...`);
 
-    // Passo B: Tentar via TABELA (Standings)
-    // A documentação diz que 'standings' retorna a classificação.
-    // Quem está na classificação é quem está jogando a fase principal.
-    try {
-        const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${targetSeason}`, 3600);
+    for (const season of seasonsToTry) {
+        // --- TENTATIVA A: TABELA (Standings) ---
+        // Prioridade máxima pois filtra eliminados
+        try {
+            const standingsRes = await fetchAPI(`/standings?league=${leagueId}&season=${season}`, 3600);
 
-        if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
-            const standings = standingsRes[0].league.standings;
-            let teams: APITeam[] = [];
-
-            // Extrai times de todos os grupos ou tabela única
-            standings.forEach((groupOrTable: any[]) => {
-                groupOrTable.forEach((position: any) => {
-                    teams.push({
-                        id: position.team.id,
-                        name: position.team.name,
-                        logo: position.team.logo
+            if (standingsRes && standingsRes.length > 0 && standingsRes[0].league && standingsRes[0].league.standings) {
+                let teams: APITeam[] = [];
+                standingsRes[0].league.standings.forEach((groupOrTable: any[]) => {
+                    groupOrTable.forEach((pos: any) => {
+                        teams.push({ id: pos.team.id, name: pos.team.name, logo: pos.team.logo });
                     });
                 });
-            });
 
-            // Se achou times na tabela, retorna essa lista limpa!
-            if (teams.length >= 2) {
-                // Remove duplicatas usando Map
-                const uniqueTeams = Array.from(new Map(teams.map(t => [t.id, t])).values());
-                console.log(`✅ [API] Sucesso! ${uniqueTeams.length} times filtrados pela Tabela.`);
-                return uniqueTeams;
+                // Se achou pelo menos 4 times, confia e retorna!
+                if (teams.length >= 4) {
+                    const unique = Array.from(new Map(teams.map(t => [t.id, t])).values());
+                    console.log(`✅ [SUCESSO] Encontrados ${unique.length} times na Tabela de ${season}.`);
+                    return unique;
+                }
             }
-        }
-    } catch (err) {
-        console.warn(`⚠️ Erro ao processar tabela:`, err);
+        } catch (e) { /* Ignora erro e tenta o próximo */ }
+
+        // --- TENTATIVA B: LISTA GERAL (Teams) ---
+        // Se a tabela falhou, pega a lista geral dessa temporada
+        try {
+            const teamsRes = await fetchAPI(`/teams?league=${leagueId}&season=${season}`, 86400);
+            if (teamsRes && teamsRes.length > 4) {
+                console.log(`✅ [SUCESSO] Encontrados ${teamsRes.length} times na Lista Geral de ${season}.`);
+                return teamsRes.map((item: any) => ({
+                    id: item.team.id,
+                    name: item.team.name,
+                    logo: item.team.logo
+                }));
+            }
+        } catch (e) { /* Ignora erro e tenta o próximo */ }
     }
 
-    // Passo C: Fallback via LISTA DE TIMES (Teams Endpoint)
-    // Conforme o tutorial "HOW TO GET ALL TEAMS", usamos isso se a tabela falhar.
-    console.log(`⚠️ [FALLBACK] Tabela vazia. Usando método do tutorial (Lista de Inscritos)...`);
-    const fallbackRes = await fetchAPI(`/teams?league=${leagueId}&season=${targetSeason}`, 86400);
-
-    if (fallbackRes && fallbackRes.length > 0) {
-        console.log(`✅ [API] Lista bruta retornou ${fallbackRes.length} times.`);
-        return fallbackRes.map((item: any) => ({
-            id: item.team.id,
-            name: item.team.name,
-            logo: item.team.logo
-        }));
-    }
-
+    console.error(`❌ [FALHA] Não foi possível encontrar times para a liga ${leagueId} em 2025, 2026 ou 2024.`);
     return [];
 }
 
-// --- OUTRAS FUNÇÕES (MANTIDAS IGUAIS) ---
+// --- OUTRAS FUNÇÕES (Mantidas originais) ---
 
 export async function getMatchesByDate(date: string, cacheTime = 300): Promise<any[]> {
-    // Adicionamos timezone conforme documentação de 'Timezone' endpoint
     const response = await fetchAPI(`/fixtures?date=${date}&timezone=America/Sao_Paulo`, cacheTime);
     if (!response) return [];
     return response.map((item: any) => ({
@@ -171,7 +148,6 @@ export async function getLiveMatches(): Promise<any[]> {
 export async function getMatchesByIds(ids: number[]): Promise<any[]> {
     if (ids.length === 0) return [];
     const batches = [];
-    // A documentação diz que 'ids' aceita até 20 ids
     for (let i = 0; i < ids.length; i += 20) batches.push(ids.slice(i, i + 20));
 
     let allMatches: any[] = [];
