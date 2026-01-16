@@ -60,7 +60,6 @@ export async function createChampionshipAction(formData: FormData) {
         if (!user) return { success: false, message: "Usuário não encontrado." }
 
         // 4. CRIAR O CAMPEONATO (VOCÊ COMO DONO)
-        // O campo 'ownerId' garante seus poderes de Admin
         const championship = await prisma.championship.create({
             data: {
                 name,
@@ -72,7 +71,7 @@ export async function createChampionshipAction(formData: FormData) {
                 maxParticipants: limit,
                 adminPhone: whatsapp,
                 ownerId: userId, // <--- AQUI ESTÁ O PODER DE ADMIN
-                status: "ACTIVE", // Já nasce pronto para receber gente
+                status: "ACTIVE", // O Campeonato tem status, isso está correto.
 
                 // Configurações lógicas
                 hasGroupStage: format === 'GROUPS' || format === 'CUP',
@@ -81,15 +80,13 @@ export async function createChampionshipAction(formData: FormData) {
         })
 
         // 5. INSERIR O ADMIN COMO JOGADOR (SE ELE QUISER)
-        // Isso cria a ficha dele na tabela de participantes
         if (adminParticipates === "yes") {
             await prisma.championshipParticipant.create({
                 data: {
                     userId: userId,
                     championshipId: championship.id,
-                    teamName: user.name || "Time do Admin", // Nome inicial do time
-                    teamLogo: user.image, // Já puxa a foto do perfil se tiver
-                    status: "ACTIVE"
+                    teamName: user.name || "Time do Admin",
+                    teamLogo: user.image,
                 }
             })
         }
