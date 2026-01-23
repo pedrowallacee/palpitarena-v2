@@ -64,7 +64,7 @@ export function CreateLeagueForm() {
 
                 <form action={handleSubmit} className="space-y-8">
 
-                    {/* FORMATO */}
+                    {/* 1. FORMATO */}
                     <div>
                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1 mb-3 block">1. Escolha o Formato</label>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -106,13 +106,16 @@ export function CreateLeagueForm() {
                         </div>
                     </div>
 
-                    {/* DADOS */}
+                    {/* DADOS GERAIS */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                        {/* 2. NOME */}
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">2. Nome do Campeonato</label>
                             <input name="name" type="text" placeholder="Ex: Copa da Firma 2026" className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm font-bold placeholder:text-gray-700 focus:border-emerald-500 focus:bg-black/60 outline-none transition-all" required />
                         </div>
 
+                        {/* 3. TIPO / BASE */}
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">3. Baseado em qual torneio?</label>
                             <div className="relative">
@@ -154,26 +157,41 @@ export function CreateLeagueForm() {
                             </div>
                         </div>
 
+                        {/* 4. WHATSAPP */}
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">4. Seu WhatsApp (Admin)</label>
                             <input name="whatsapp" value={whatsapp} onChange={handlePhoneChange} placeholder="(00) 00000-0000" className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm font-bold placeholder:text-gray-700 focus:border-emerald-500 outline-none transition-all font-mono" maxLength={15} required />
                         </div>
 
+                        {/* 5. CAPACIDADE (ATUALIZADO) */}
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">5. Limite de Jogadores</label>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">5. Capacidade da Liga</label>
                             <div className="relative">
-                                <select name="maxParticipants" className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm font-bold appearance-none cursor-pointer focus:border-emerald-500 outline-none">
-                                    <option value="20" selected>20 Jogadores (Padrão)</option>
-                                    <option value="10">10 Jogadores (Amigos)</option>
-                                    <option value="32">32 Jogadores (Copa do Mundo)</option>
-                                    <option value="100">100 Jogadores (Grande Liga)</option>
+                                <select
+                                    name="maxParticipants"
+                                    className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white text-sm font-bold appearance-none cursor-pointer focus:border-emerald-500 outline-none"
+                                    defaultValue="16"
+                                >
+                                    <optgroup label="Formatos Recomendados" className="bg-[#1a1a1a]">
+                                        <option value="8">8 Times (2 Grupos de 4)</option>
+                                        <option value="10">10 Times (2 Grupos de 5)</option>
+                                        <option value="12">12 Times (2 Grupos de 6)</option>
+                                        <option value="16">16 Times (4 Grupos de 4) ★ Padrão</option>
+                                        <option value="20">20 Times (4 Grupos de 5)</option>
+                                        <option value="24">24 Times (4 Grupos de 6)</option>
+                                        <option value="32">32 Times (8 Grupos de 4) 🏆 Copa do Mundo</option>
+                                    </optgroup>
+                                    <optgroup label="Outros" className="bg-[#1a1a1a]">
+                                        <option value="100">100 Jogadores (Liga Massiva)</option>
+                                    </optgroup>
                                 </select>
                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">▼</div>
                             </div>
+                            <p className="text-[9px] text-gray-500 ml-1">Defina o tamanho exato para montagem perfeita dos grupos.</p>
                         </div>
                     </div>
 
-                    {/* TOGGLE */}
+                    {/* TOGGLE ADMIN JOGA */}
                     <div className="bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
@@ -191,6 +209,7 @@ export function CreateLeagueForm() {
                         </div>
                     </div>
 
+                    {/* BOTÃO SUBMIT */}
                     <div className="pt-6 border-t border-white/5">
                         <button type="submit" disabled={loading} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-black font-black text-xl rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] transition-all transform hover:scale-[1.01] disabled:opacity-50 uppercase tracking-wide flex items-center justify-center gap-2">
                             {loading ? "Criando Liga..." : "FUNDAR LIGA AGORA ➜"}

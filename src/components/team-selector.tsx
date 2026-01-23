@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { joinChampionshipAction } from "@/actions/join-championship"
 import { searchTeamAction } from "@/actions/search-team-action"
-import { Search, Loader2, X, Trophy, Edit2 } from "lucide-react"
+import { Search, Loader2, X, Trophy, Edit2, Globe } from "lucide-react"
 
 interface Team {
     id: number
@@ -16,13 +16,12 @@ interface TeamSelectorProps {
     teams: Team[]
     championshipId: string
     takenTeams: Record<number, string>
+    leagueType?: string // NOVO: Para saber se é All Stars
 }
 
-export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }: TeamSelectorProps) {
+export function TeamSelector({ teams: initialTeams, championshipId, takenTeams, leagueType }: TeamSelectorProps) {
     const [currentTeams, setCurrentTeams] = useState<Team[]>(initialTeams)
     const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
-
-    // NOVO: Estado para o nome customizável do time
     const [customTeamName, setCustomTeamName] = useState("")
 
     const [loading, setLoading] = useState(false)
@@ -32,7 +31,8 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
 
     const router = useRouter()
 
-    // EFEITO: Quando selecionar um time, preenche o nome automaticamente para editar
+    const isAllStars = leagueType === 'Liga All Stars'
+
     useEffect(() => {
         if (selectedTeam) {
             setCustomTeamName(selectedTeam.name)
@@ -77,10 +77,7 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
 
         const formData = new FormData()
         formData.append("championshipId", championshipId)
-
-        // AQUI ESTÁ O PULO DO GATO: Enviamos o nome que você editou, não o original
         formData.append("teamName", customTeamName)
-
         formData.append("teamLogo", selectedTeam.logo)
         formData.append("teamApiId", selectedTeam.id.toString())
 
@@ -98,12 +95,18 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
         <div className="max-w-5xl mx-auto">
 
             {/* --- ÁREA DE BUSCA (GLOBAL) --- */}
-            <div className="bg-[#121212] border border-white/10 p-4 rounded-xl mb-8 flex flex-col md:flex-row gap-3 shadow-lg">
-                <div className="flex-1 relative">
+            <div className="bg-[#121212] border border-white/10 p-4 rounded-xl mb-8 flex flex-col md:flex-row gap-3 shadow-lg relative overflow-hidden">
+
+                {/* Visual All Stars no fundo da busca */}
+                {isAllStars && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-900/20 to-purple-900/20 pointer-events-none" />
+                )}
+
+                <div className="flex-1 relative z-10">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-5 h-5" />
                     <input
                         type="text"
-                        placeholder="Não achou seu time? Busque aqui (Ex: Gama, Íbis, Barcelona...)"
+                        placeholder={isAllStars ? "ALL STARS: Busque Clubes (Ex: Real) ou Seleções (Ex: Brasil)..." : "Não achou seu time? Busque aqui (Ex: Gama, Íbis...)"}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleGlobalSearch()}
@@ -111,7 +114,7 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
                     />
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 relative z-10">
                     <button
                         onClick={handleGlobalSearch}
                         disabled={isSearchingApi || searchTerm.length < 3}
@@ -133,17 +136,27 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
             </div>
 
             {/* --- CABEÇALHO DA LISTA --- */}
-            <div className="flex items-center gap-2 mb-4 px-2">
-                {isCustomList ? (
-                    <>
-                        <Search className="w-4 h-4 text-emerald-500"/>
-                        <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Resultados da Busca Global</span>
-                    </>
-                ) : (
-                    <>
-                        <Trophy className="w-4 h-4 text-gray-500"/>
-                        <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Times da Liga (Padrão)</span>
-                    </>
+            <div className="flex items-center justify-between mb-4 px-2">
+                <div className="flex items-center gap-2">
+                    {isCustomList ? (
+                        <>
+                            <Search className="w-4 h-4 text-emerald-500"/>
+                            <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Resultados da Busca Global</span>
+                        </>
+                    ) : (
+                        <>
+                            {isAllStars ? <Globe className="w-4 h-4 text-purple-400"/> : <Trophy className="w-4 h-4 text-gray-500"/>}
+                            <span className={`text-xs font-bold uppercase tracking-widest ${isAllStars ? 'text-purple-400' : 'text-gray-500'}`}>
+                                {isAllStars ? "Sugestões All Stars" : "Times da Liga (Padrão)"}
+                            </span>
+                        </>
+                    )}
+                </div>
+
+                {isAllStars && !isCustomList && (
+                    <span className="text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-1 rounded font-bold uppercase">
+                        🌎 Liberação Total
+                    </span>
                 )}
             </div>
 
@@ -213,11 +226,10 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
                 </div>
             )}
 
-            {/* --- BARRA FLUTUANTE DE CONFIRMAÇÃO (COM EDIÇÃO DE NOME) --- */}
+            {/* --- BARRA FLUTUANTE DE CONFIRMAÇÃO --- */}
             <div className={`fixed bottom-0 left-0 right-0 bg-[#0f0f0f]/95 backdrop-blur-xl border-t border-white/10 p-4 transition-transform duration-300 z-50 shadow-2xl ${selectedTeam ? 'translate-y-0' : 'translate-y-full'}`}>
                 <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-6 justify-between">
 
-                    {/* LADO ESQUERDO: ESCUDO + CAMPO DE EDIÇÃO */}
                     <div className="flex items-center gap-4 w-full md:w-auto flex-1">
                         {selectedTeam && (
                             <div className="w-16 h-16 bg-white/5 rounded-lg p-2 border border-white/10 shrink-0">
@@ -240,7 +252,6 @@ export function TeamSelector({ teams: initialTeams, championshipId, takenTeams }
                         </div>
                     </div>
 
-                    {/* LADO DIREITO: BOTÃO DE AÇÃO */}
                     <button
                         onClick={handleConfirm}
                         disabled={loading || !customTeamName.trim()}

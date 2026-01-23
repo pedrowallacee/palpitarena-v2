@@ -28,11 +28,17 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relacionamentos do Sistema
   ownedChampionships Championship[]            @relation("ChampionshipOwner")
   participations     ChampionshipParticipant[]
   predictions        Prediction[]
   notifications      Notification[]
   requests           ChampionshipRequest[]
+
+  // Relacionamentos do Histórico (Sala de Troféus)
+  histChampions HistoricalResult[] @relation("HistChampion")
+  histRunnerUps HistoricalResult[] @relation("HistRunnerUp")
+  histThirds    HistoricalResult[] @relation("HistThirdPlace")
 }
 
 // =========================================================
@@ -89,7 +95,7 @@ model ChampionshipParticipant {
 
   group String? // Ex: "A", "B"
 
-  // --- ESTATÍSTICAS DA LIGA (ATUALIZADO) ---
+  // --- ESTATÍSTICAS DA LIGA ---
   points        Int @default(0) // P (Pontos na Tabela: 3, 1, 0)
   matchesPlayed Int @default(0) // J (Jogos disputados)
   wins          Int @default(0) // V (Vitórias)
@@ -242,19 +248,39 @@ model ChampionshipRequest {
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// ---------------------------------------------------------
-// 🔥 NOVO: CACHE DE TIMES (Pokédex de Times)
-// ---------------------------------------------------------
 model CachedTeam {
-  id    String @id @default(cuid()) // ID interno
-  apiId Int    @unique // ID da API-Football (Ex: 127 para Flamengo)
+  id    String @id @default(cuid())
+  apiId Int    @unique
   name  String
   logo  String
 
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 
-  @@index([name]) // Índice para busca rápida por nome
+  @@index([name])
+}
+
+// =========================================================
+// 9. HISTÓRICO MANUAL (NOVO)
+// =========================================================
+
+model HistoricalResult {
+  id         String @id @default(cuid())
+  season     String // Ex: "season1", "season2"
+  leagueName String // Ex: "Premier League", "Copa do Mundo"
+  category   String // Ex: "NATIONAL", "CONTINENTAL", "WORLD_CLUB", "WORLD_CUP"
+
+  // Quem ganhou (Relaciona com usuário para pegar foto e nome atualizados)
+  championId String?
+  champion   User?   @relation("HistChampion", fields: [championId], references: [id])
+
+  runnerUpId String?
+  runnerUp   User?   @relation("HistRunnerUp", fields: [runnerUpId], references: [id])
+
+  thirdPlaceId String?
+  thirdPlace   User?   @relation("HistThirdPlace", fields: [thirdPlaceId], references: [id])
+
+  updatedAt DateTime @updatedAt
 }
 
 // =========================================================

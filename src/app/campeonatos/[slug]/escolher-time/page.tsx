@@ -18,6 +18,7 @@ export default async function EscolherTimePage({ params }: { params: Promise<{ s
             id: true,
             name: true,
             apiLeagueId: true,
+            leagueType: true, // <--- NOVO: Precisamos saber o tipo da liga (All Stars?)
             participants: {
                 select: {
                     teamApiId: true,
@@ -53,6 +54,8 @@ export default async function EscolherTimePage({ params }: { params: Promise<{ s
     })
 
     // 4. Busca times da API
+    // Se for All Stars, ainda buscamos uma lista padrão (71 - Brasileirão) só pra não ficar vazio de início,
+    // mas o TeamSelector vai avisar que pode buscar qualquer coisa.
     const leagueId = championship.apiLeagueId || 71
     console.log(`🔍 Buscando times para Liga ID: ${leagueId}`)
     const teams = await getTeamsByLeague(leagueId)
@@ -80,11 +83,13 @@ export default async function EscolherTimePage({ params }: { params: Promise<{ s
                 )}
             </div>
 
+            {/* Passando leagueType para ativar o modo All Stars se necessário */}
             {teams.length > 0 && (
                 <TeamSelector
                     teams={teams}
                     championshipId={championship.id}
-                    takenTeams={takenTeamsMap} // PASSANDO A LISTA DE OCUPADOS
+                    takenTeams={takenTeamsMap}
+                    leagueType={championship.leagueType || ""} // <--- AQUI A MUDANÇA
                 />
             )}
         </div>
