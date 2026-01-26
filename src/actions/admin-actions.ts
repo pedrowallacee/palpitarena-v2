@@ -109,7 +109,7 @@ export async function toggleUserRoleAction(targetUserId: string, currentRole: 'U
 }
 
 // =========================================================
-// 3. FUNÇÕES DE RODADA
+// 3. FUNÇÕES DE RODADA (CORRIGIDAS: USA homeScore/awayScore)
 // =========================================================
 
 export async function updateMatchResultAction(matchId: string, home: number, away: number) {
@@ -117,13 +117,12 @@ export async function updateMatchResultAction(matchId: string, home: number, awa
         await prisma.match.update({
             where: { id: matchId },
             data: {
-                resultHome: home,
-                resultAway: away,
+                // CORREÇÃO: Usar apenas homeScore/awayScore que existem no schema
                 homeScore: home,
                 awayScore: away
             }
         })
-        revalidatePath('/', 'layout') // Força atualização total
+        revalidatePath('/', 'layout')
         return { success: true }
     } catch (error) {
         return { success: false, message: "Erro ao atualizar placar" }
@@ -149,12 +148,12 @@ export async function closeRoundAction(roundId: string) {
         })
 
         for (const match of round.matches) {
-            if (match.resultHome === null || match.resultAway === null) continue;
+            // CORREÇÃO: Ler de homeScore/awayScore
+            if (match.homeScore === null || match.awayScore === null) continue;
 
-            const realHome = match.resultHome
-            const realAway = match.resultAway
+            const realHome = match.homeScore
+            const realAway = match.awayScore
             const realDiff = realHome - realAway
-            const realWinner = realDiff > 0 ? 'HOME' : realDiff < 0 ? 'AWAY' : 'DRAW'
 
             for (const pred of match.predictions) {
                 if (!userPoints[pred.userId]) userPoints[pred.userId] = { points: 0, exact: 0 }
@@ -182,8 +181,9 @@ export async function closeRoundAction(roundId: string) {
                 await prisma.championshipParticipant.update({
                     where: { id: participant.id },
                     data: {
-                        points: { increment: stats.points },
-                        exactScores: { increment: stats.exact },
+                        points: { increment: stats.points }, // Pontos Ranking Geral
+                        // Aqui você pode adicionar lógica para somar pontos de grupo se necessário
+                        // groupPoints: { increment: ... }
                         matchesPlayed: { increment: round.matches.length }
                     }
                 })
@@ -196,7 +196,6 @@ export async function closeRoundAction(roundId: string) {
 
         await prisma.round.update({ where: { id: roundId }, data: { status: 'FINISHED' } })
 
-        // REVALIDAÇÃO FORTE
         const slug = round.championship.slug
         revalidatePath(`/campeonatos/${slug}`)
         revalidatePath('/', 'layout')
@@ -208,15 +207,11 @@ export async function closeRoundAction(roundId: string) {
     }
 }
 
-// --- SYNC API (COM REVALIDAÇÃO CORRETA) ---
 export async function syncRoundWithApiAction(roundId: string) {
     try {
         const round = await prisma.round.findUnique({
             where: { id: roundId },
-            include: {
-                matches: true,
-                championship: true // <--- Incluímos para pegar o Slug
-            }
+            include: { matches: true, championship: true }
         })
 
         if (!round) return { success: false, message: "Rodada não encontrada." }
@@ -255,8 +250,7 @@ export async function syncRoundWithApiAction(roundId: string) {
                 await prisma.match.update({
                     where: { id: match.id },
                     data: {
-                        resultHome: goals.home,
-                        resultAway: goals.away,
+                        // CORREÇÃO: Usar homeScore/awayScore
                         homeScore: goals.home,
                         awayScore: goals.away,
                         status: ['FT', 'AET', 'PEN'].includes(status) ? 'FINISHED' : 'LIVE'
@@ -266,11 +260,10 @@ export async function syncRoundWithApiAction(roundId: string) {
             }
         }
 
-        // --- O PULO DO GATO: Revalida a página exata do campeonato ---
         if (round.championship?.slug) {
             revalidatePath(`/campeonatos/${round.championship.slug}`)
         }
-        revalidatePath('/', 'layout') // Garante que tudo atualize
+        revalidatePath('/', 'layout')
 
         if (updatedCount === 0) {
             return { success: false, message: "Conectou à API, mas nenhum jogo tinha placar finalizado ainda." }

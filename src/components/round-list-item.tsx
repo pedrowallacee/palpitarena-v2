@@ -86,7 +86,7 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                 className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer"
                 onClick={() => showPredictions && setIsOpen(!isOpen)}
             >
-                {/* INFO ESQUERDA */}
+                {/* INFO */}
                 <div className="flex items-start gap-4 flex-1">
                     <div className={`w-1.5 h-12 rounded-full ${isClosed ? 'bg-gray-700' : 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]'}`} />
                     <div>
@@ -120,7 +120,7 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                     </div>
                 </div>
 
-                {/* BOTÕES DIREITA */}
+                {/* BOTÕES */}
                 <div className="flex items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
                     {showPredictions && (
                         <button
@@ -149,17 +149,13 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                         {matchesToShow.map((match: any) => {
                             const prediction = match.predictions?.find((p:any) => p.userId === currentUserId)
 
-                            // --- TENTATIVA DE RECUPERAR O PLACAR (FALLBACK ROBUSTO) ---
-                            // Tenta ler do resultHome (novo), se não der, tenta homeScore (antigo)
-                            const realHome = match.resultHome ?? match.homeScore
-                            const realAway = match.resultAway ?? match.awayScore
-
-                            // Define se tem placar VÁLIDO (não nulo)
-                            const hasRealScore = realHome !== null && realHome !== undefined && realAway !== null && realAway !== undefined
+                            // CORREÇÃO: Ler apenas de homeScore/awayScore
+                            const realHome = match.homeScore
+                            const realAway = match.awayScore
+                            const hasRealScore = realHome !== null && realAway !== null
 
                             const isLive = match.status === 'LIVE' || match.status === 'IN_PLAY' || match.status === '1H' || match.status === '2H' || match.status === 'HT'
-                            // Se tiver placar, considera finalizado/mostrável
-                            const isFinished = match.status === 'FINISHED' || match.status === 'FT' || match.status === 'AET' || match.status === 'PEN' || hasRealScore
+                            const isFinished = match.status === 'FINISHED' || match.status === 'FT' || hasRealScore
 
                             const matchDate = new Date(match.date)
                             const timeString = matchDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -189,13 +185,11 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                             return (
                                 <div key={match.id} className={`flex flex-wrap md:flex-nowrap items-center justify-between p-2 rounded-lg border transition-all gap-2 ${bgClass} ${resultBorder}`}>
 
-                                    {/* DATA */}
                                     <div className="flex flex-col items-center justify-center min-w-[40px] border-r border-white/5 mr-1 pr-2 py-1 hidden sm:flex">
                                         <span className="text-[9px] text-gray-500 font-bold uppercase">{dateString}</span>
                                         <span className="text-xs text-white font-mono font-black tracking-tighter">{timeString}</span>
                                     </div>
 
-                                    {/* TIMES */}
                                     <div className="flex items-center gap-3 w-full md:w-auto justify-center md:justify-start mb-2 md:mb-0 flex-1 md:flex-none">
                                         <div className="flex flex-col items-center w-10">
                                             {match.homeLogo ? <img src={match.homeLogo} className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-gray-800 rounded-full"/>}
@@ -208,9 +202,7 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                                         </div>
                                     </div>
 
-                                    {/* PLACARES */}
                                     <div className="flex items-center justify-center gap-4 flex-1">
-                                        {/* SEU PALPITE */}
                                         <div className="flex flex-col items-center">
                                             <span className="text-[7px] text-gray-500 font-black uppercase tracking-widest mb-0.5">Seu</span>
                                             {prediction ? (
@@ -222,15 +214,11 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                                             )}
                                         </div>
 
-                                        {/* PLACAR REAL (Agora com proteção contra nulo) */}
                                         {(isLive || isFinished) ? (
                                             <div className="flex flex-col items-center">
                                                 <span className={`text-[7px] font-black uppercase tracking-widest mb-0.5 ${isLive ? 'text-red-500 animate-pulse' : 'text-emerald-500'}`}>{isLive ? 'Ao Vivo' : 'Real'}</span>
                                                 <div className={`px-2 py-1 rounded border font-mono text-xs font-bold tracking-widest min-w-[60px] text-center flex items-center justify-center gap-1 ${isLive ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'}`}>
-                                                    {/* Só mostra o número se ele existir (não for null/undefined) */}
-                                                    <span>{realHome ?? '-'}</span>
-                                                    <span className="opacity-50 text-[10px]">-</span>
-                                                    <span>{realAway ?? '-'}</span>
+                                                    <span>{realHome ?? '-'}</span><span className="opacity-50 text-[10px]">-</span><span>{realAway ?? '-'}</span>
                                                 </div>
                                             </div>
                                         ) : (
@@ -241,7 +229,6 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                                         )}
                                     </div>
 
-                                    {/* PONTOS */}
                                     <div className="w-auto md:w-[15%] flex justify-end pl-2 border-l border-white/5 md:border-none min-w-[50px]">
                                         <div className="flex flex-col items-end">
                                             <span className={`text-xl font-black font-teko leading-none ${pointsText}`}>{pointsLabel}</span>
