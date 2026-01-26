@@ -95,7 +95,7 @@ model ChampionshipParticipant {
 
   group String? // Ex: "A", "B"
 
-  // --- ESTATÍSTICAS DA LIGA ---
+  // --- ESTATÍSTICAS DA LIGA (GERAL / GLOBAL) ---
   points        Int @default(0) // P (Pontos na Tabela: 3, 1, 0)
   matchesPlayed Int @default(0) // J (Jogos disputados)
   wins          Int @default(0) // V (Vitórias)
@@ -105,6 +105,19 @@ model ChampionshipParticipant {
   goalsScored    Int @default(0) // GP (Pontos Feitos nos Palpites)
   goalsConceded  Int @default(0) // GC (Pontos Sofridos do Rival)
   goalDifference Int @default(0) // SG (Saldo de Pontos)
+
+  // =========================================================
+  // 👇 CAMPOS NOVOS DA FASE DE GRUPOS (ADICIONE ISTO) 👇
+  // =========================================================
+  groupPoints Int @default(0)
+  groupPlayed Int @default(0)
+  groupWins   Int @default(0)
+  groupDraws  Int @default(0)
+  groupLosses Int @default(0)
+  groupGF     Int @default(0) // Gols Pró
+  groupGC     Int @default(0) // Gols Contra
+  groupSG     Int @default(0) // Saldo de Gols
+  // =========================================================
 
   // Relacionamentos
   userId String?
