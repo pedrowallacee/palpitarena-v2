@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Dices, Loader2 } from "lucide-react"
-import { drawGroupsAction } from "@/actions/draw-groups-action"
+import { drawGroupsAction } from "@/actions/draw-groups"
 import { useRouter } from "next/navigation"
 
 export function DrawButton({ championshipId }: { championshipId: string }) {
