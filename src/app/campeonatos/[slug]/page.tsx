@@ -14,7 +14,7 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
 
     if (!userId) redirect("/login")
 
-    // 1. USUÁRIO
+    // 1. USUÁRIO ATUAL
     const currentUser = await prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, role: true }
@@ -22,7 +22,7 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
 
     if (!currentUser) redirect("/login")
 
-    // 2. CAMPEONATO
+    // 2. CAMPEONATO (QUERY CORRIGIDA)
     const championshipData = await prisma.championship.findUnique({
         where: { slug },
         include: {
@@ -33,14 +33,17 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
                     matches: {
                         orderBy: { date: 'asc' },
                         include: {
-                            predictions: true // Aqui costuma funcionar (Match -> Predictions)
+                            predictions: {
+                                include: {
+                                    user: { select: { id: true, name: true, image: true } }
+                                }
+                            }
                         }
                     }
                 }
             },
             participants: {
                 include: {
-                    // CORREÇÃO: Buscamos predictions DENTRO do user
                     user: {
                         include: {
                             predictions: true
@@ -56,12 +59,10 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
     // Casting para any para manipular os dados livremente
     const camp: any = championshipData
 
-    // --- CORREÇÃO DE ESTRUTURA ---
-    // Como buscamos predictions dentro de 'user', vamos mover para a raiz de 'participant'
-    // para que o Leaderboard funcione sem alterações.
+    // Normaliza participantes para o Leaderboard
     camp.participants = camp.participants.map((p: any) => ({
         ...p,
-        predictions: p.user.predictions || [] // Trazemos os palpites do usuário para o participante
+        predictions: p.user.predictions || []
     }))
 
     const myParticipant = camp.participants.find((p: any) => p.userId === userId)
@@ -152,6 +153,7 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
                                     round={round}
                                     slug={slug}
                                     canManage={canManage}
+                                    currentUserId={userId} // PASSANDO O ID DO USUÁRIO PARA O COMPONENTE
                                 />
                             ))
                         )}
