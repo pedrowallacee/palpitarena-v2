@@ -227,16 +227,32 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                 </button>
                             </div>
 
-                            {/* REGRAS DE CÓPIA */}
+                            {/* REGRAS ANTI-CÓPIA (ATUALIZADO E COMPLETO) */}
                             {showRules && (
                                 <div className="bg-[#151515] border border-white/10 rounded-lg p-3 mb-4 text-[10px] text-gray-400 space-y-1 animate-in fade-in slide-in-from-top-2">
-                                    <p className="text-white font-bold mb-2">📋 Regras Anti-Cópia:</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>6 Jogos: <span className="text-white">Max 3</span></div>
-                                        <div>8 Jogos: <span className="text-white">Max 4</span></div>
-                                        <div>10 Jogos: <span className="text-white">Max 5</span></div>
+                                    <p className="text-white font-bold mb-2 uppercase border-b border-white/5 pb-1">
+                                        📋 Limites de Cópia (50%):
+                                    </p>
+
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
+                                        <div>[ 06 Jogos ] - <span className="text-emerald-400 font-bold">Max 3</span></div>
+                                        <div>[ 08 Jogos ] - <span className="text-emerald-400 font-bold">Max 4</span></div>
+                                        <div>[ 10 Jogos ] - <span className="text-emerald-400 font-bold">Max 5</span></div>
+                                        <div>[ 12 Jogos ] - <span className="text-emerald-400 font-bold">Max 6</span></div>
+                                        <div>[ 14 Jogos ] - <span className="text-emerald-400 font-bold">Max 7</span></div>
+                                        <div>[ 16 Jogos ] - <span className="text-emerald-400 font-bold">Max 8</span></div>
+                                        <div>[ 18 Jogos ] - <span className="text-emerald-400 font-bold">Max 9</span></div>
+                                        <div>[ 20 Jogos ] - <span className="text-emerald-400 font-bold">Max 10</span></div>
                                     </div>
-                                    <p className="text-red-400 font-bold mt-2">Punição: W.O na rodada.</p>
+
+                                    <div className="mt-3 pt-2 border-t border-white/5">
+                                        <p className="text-red-400 font-bold uppercase flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3" /> Punição: W.O na rodada.
+                                        </p>
+                                        <p className="text-[9px] opacity-60">
+                                            Considera-se cópia apenas palpites **idênticos** ao do adversário direto.
+                                        </p>
+                                    </div>
                                 </div>
                             )}
 
