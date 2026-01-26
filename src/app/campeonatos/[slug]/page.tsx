@@ -81,13 +81,6 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
             <div className="relative bg-[#121212] border-b border-white/10 py-10 px-4 mb-8 overflow-hidden">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-600/5 rounded-full blur-[120px] pointer-events-none" />
 
-                {/* Badge ALL STARS */}
-                <div className="absolute top-4 right-4 md:right-auto md:left-4 z-20">
-                    <span className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest shadow-lg shadow-purple-500/20">
-                        All Stars 🌎
-                    </span>
-                </div>
-
                 <div className="max-w-6xl mx-auto relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="text-center md:text-left">
                         {myParticipant && (
@@ -166,7 +159,10 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
                         <h2 className="text-2xl font-black italic font-teko uppercase flex items-center gap-2">
                             <span className="text-yellow-500 text-3xl">🏆</span> Classificação
                         </h2>
-                        <Link href="/ranking" className="text-[10px] font-bold text-gray-500 bg-white/5 hover:bg-white/10 px-3 py-1 rounded transition-colors uppercase">
+                        <Link
+                            href={`/campeonatos/${slug}/classificacao`}
+                            className="text-[10px] font-bold text-gray-500 bg-white/5 hover:bg-white/10 px-3 py-1 rounded transition-colors uppercase"
+                        >
                             Ver Geral
                         </Link>
                     </div>
