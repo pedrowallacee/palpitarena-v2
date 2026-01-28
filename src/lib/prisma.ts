@@ -1,13 +1,8 @@
-// src/lib/prisma.ts
+import { PrismaClient } from '@prisma/client'
 
-import { PrismaClient } from "@prisma/client"
+// Adiciona o prisma ao escopo global do Node para evitar múltiplas instâncias
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
-const globalForPrisma = global as unknown as { prisma: PrismaClient }
+export const prisma = globalForPrisma.prisma || new PrismaClient()
 
-export const prisma =
-    globalForPrisma.prisma ||
-    new PrismaClient({
-        log: ["error"], // Removemos 'query' para não poluir o log em produção
-    })
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

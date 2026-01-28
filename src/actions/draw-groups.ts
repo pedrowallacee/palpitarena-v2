@@ -3,16 +3,13 @@
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 
-// --- ALGORITMO DE TODOS CONTRA TODOS (Round Robin) ---
-// Gera os pares: 1x2, 3x4... depois gira e gera 1x3, 2x4...
+// Algoritmo matemático para gerar tabela de 3 rodadas (Ida)
 function generateRoundRobinSchedule(participants: string[]) {
     const n = participants.length
     const rounds = []
-
-    // Se for impar, adiciona um "dummy" (folga), mas vamos focar em pares
     const ps = [...participants]
 
-    // Número de rodadas é N-1 (ex: 4 times = 3 rodadas)
+    // Para 4 times = gera 3 rodadas
     for (let r = 0; r < n - 1; r++) {
         const roundMatches = []
         for (let i = 0; i < n / 2; i++) {
@@ -22,8 +19,7 @@ function generateRoundRobinSchedule(participants: string[]) {
         }
         rounds.push(roundMatches)
 
-        // Rotaciona o array (mantém o primeiro fixo e gira o resto)
-        // [0, 1, 2, 3] -> [0, 3, 1, 2]
+        // Rotaciona o array
         ps.splice(1, 0, ps.pop()!)
     }
     return rounds
@@ -38,7 +34,15 @@ export async function drawGroupsAction(championshipId: string) {
 
         if (!championship) return { success: false, message: "Campeonato não encontrado." }
 
-        // 1. Limpar dados antigos de grupo (Resetar status)
+        const players = championship.participants
+
+        if (players.length < 4) return { success: false, message: "Mínimo de 4 times para criar grupos." }
+
+        // =========================================================
+        // 1. LIMPEZA TOTAL (Resetar tudo antes de sortear)
+        // =========================================================
+
+        // Zera estatísticas
         await prisma.championshipParticipant.updateMany({
             where: { championshipId },
             data: {
@@ -48,80 +52,83 @@ export async function drawGroupsAction(championshipId: string) {
             }
         })
 
-        // Apaga duelos antigos se houver (Opcional, cuidado se já tiver jogo rolando)
-        // await prisma.duel.deleteMany({ where: { round: { championshipId } } })
+        // Apaga rodadas antigas de grupos
+        await prisma.round.deleteMany({
+            where: { championshipId, type: 'GROUP_STAGE' }
+        })
 
-        const players = championship.participants
-
-        // 2. EMBARALHAR (Shuffle)
+        // =========================================================
+        // 2. SORTEIO E DISTRIBUIÇÃO NOS GRUPOS
+        // =========================================================
         const shuffled = players.sort(() => Math.random() - 0.5)
 
+        const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+        const playersPerGroup = 4 // Padrão 4 times por grupo
+
+        const groupsMap: Record<string, string[]> = {}
+
+        for (let i = 0; i < shuffled.length; i++) {
+            const groupIndex = Math.floor(i / playersPerGroup)
+            const groupName = groupNames[groupIndex] || 'Z'
+
+            await prisma.championshipParticipant.update({
+                where: { id: shuffled[i].id },
+                data: { group: groupName }
+            })
+
+            if (!groupsMap[groupName]) groupsMap[groupName] = []
+            groupsMap[groupName].push(shuffled[i].id)
+        }
+
         // =========================================================
-        // LÓGICA 1: FASE DE GRUPOS + GERAR JOGOS
+        // 3. CRIAÇÃO DAS 6 RODADAS UNIFICADAS
         // =========================================================
-        if (championship.format === 'GROUPS' || championship.hasGroupStage) {
-            const groupNames = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-            const playersPerGroup = 4 // Padrão FIFA
+        // 3 Rodadas de Ida + 3 Rodadas de Volta = 6 Rodadas Totais
 
-            // Dicionário para guardar quem ficou em qual grupo
-            const groupsMap: Record<string, string[]> = {}
+        const globalRoundsIds: string[] = []
+        const totalRounds = (playersPerGroup - 1) * 2 // (4-1)*2 = 6
 
-            // 3. Distribui os jogadores nos grupos
-            for (let i = 0; i < shuffled.length; i++) {
-                const groupIndex = Math.floor(i / playersPerGroup)
-                const groupName = groupNames[groupIndex] || 'Z'
+        for (let i = 1; i <= totalRounds; i++) {
+            const round = await prisma.round.create({
+                data: {
+                    championshipId,
+                    name: `Rodada ${i} - Fase de Grupos`, // Ex: Rodada 1, Rodada 2... Rodada 6
+                    type: 'GROUP_STAGE',
+                    status: 'SCHEDULED',
+                    deadline: new Date(Date.now() + (i * 7 * 24 * 60 * 60 * 1000)) // +1 semana por rodada
+                }
+            })
+            globalRoundsIds.push(round.id)
+        }
 
-                await prisma.championshipParticipant.update({
-                    where: { id: shuffled[i].id },
-                    data: { group: groupName }
-                })
+        // =========================================================
+        // 4. PREENCHIMENTO DOS JOGOS (IDA E VOLTA)
+        // =========================================================
 
-                if (!groupsMap[groupName]) groupsMap[groupName] = []
-                groupsMap[groupName].push(shuffled[i].id)
-            }
+        for (const [groupName, pIds] of Object.entries(groupsMap)) {
+            if (pIds.length < 2) continue;
 
-            // 4. GERAR CONFRONTOS (Quem x Quem)
-            // Para cada grupo, gera as rodadas internas
-            for (const [groupName, pIds] of Object.entries(groupsMap)) {
-                if (pIds.length < 2) continue; // Grupo com 1 pessoa não tem jogo
+            // 1. Gera os 3 jogos de IDA (Turno)
+            const scheduleIda = generateRoundRobinSchedule(pIds)
 
-                // Gera a tabela de jogos matemática
-                const schedule = generateRoundRobinSchedule(pIds)
+            // 2. Gera os 3 jogos de VOLTA (Returno) - Invertendo mando
+            const scheduleVolta = scheduleIda.map(matches => {
+                return matches.map(m => ({ home: m.away, away: m.home }))
+            })
 
-                // Salva no Banco
-                for (let rIndex = 0; rIndex < schedule.length; rIndex++) {
-                    const matches = schedule[rIndex]
-                    const roundNumber = rIndex + 1
+            // 3. Junta tudo em uma lista de 6 rodadas: [R1, R2, R3, R4, R5, R6]
+            const fullSchedule = [...scheduleIda, ...scheduleVolta]
 
-                    // Cria ou busca a Rodada "Fase de Grupos - Rodada X"
-                    // Nota: O ideal é criar a Rodada Global antes, mas aqui vamos simplificar
-                    // Vamos criar uma rodada genérica para o grupo se não existir
+            // 4. Salva no banco vinculando às Rodadas Globais
+            for (let rIndex = 0; rIndex < fullSchedule.length; rIndex++) {
+                const matches = fullSchedule[rIndex]
+                const globalRoundId = globalRoundsIds[rIndex]
 
-                    // PROCURA SE JÁ EXISTE UMA RODADA PARA ESSE NÚMERO
-                    let round = await prisma.round.findFirst({
-                        where: {
-                            championshipId,
-                            name: `Rodada ${roundNumber} - Grupos`
-                        }
-                    })
-
-                    if (!round) {
-                        round = await prisma.round.create({
-                            data: {
-                                championshipId,
-                                name: `Rodada ${roundNumber} - Grupos`,
-                                type: 'GROUP_STAGE',
-                                status: 'SCHEDULED',
-                                deadline: new Date(Date.now() + (roundNumber * 7 * 24 * 60 * 60 * 1000)) // +1 semana por rodada
-                            }
-                        })
-                    }
-
-                    // Cria os Duelos (PvP)
+                if (globalRoundId) {
                     for (const m of matches) {
                         await prisma.duel.create({
                             data: {
-                                roundId: round.id,
+                                roundId: globalRoundId,
                                 homeParticipantId: m.home,
                                 awayParticipantId: m.away,
                                 status: 'SCHEDULED'
@@ -130,60 +137,19 @@ export async function drawGroupsAction(championshipId: string) {
                     }
                 }
             }
-
-            // Muda status
-            await prisma.championship.update({
-                where: { id: championshipId },
-                data: {
-                    status: 'GROUP_STAGE',
-                    currentStage: 'GROUPS'
-                }
-            })
-
-            revalidatePath(`/campeonatos/${championship.slug}`)
-            return { success: true, message: "🎲 Grupos sorteados e Tabela de Jogos criada!" }
         }
 
-        // =========================================================
-        // LÓGICA 2: MATA-MATA DIRETO
-        // =========================================================
-        if (championship.format === 'KNOCKOUT') {
-            const round = await prisma.round.create({
-                data: {
-                    championshipId,
-                    name: "Oitavas de Final", // Exemplo
-                    deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-                    type: 'ROUND_OF_16',
-                    status: 'OPEN'
-                }
-            })
+        // Atualiza status do campeonato
+        await prisma.championship.update({
+            where: { id: championshipId },
+            data: { status: 'GROUP_STAGE', currentStage: 'GROUPS' }
+        })
 
-            for (let i = 0; i < shuffled.length; i += 2) {
-                if (i + 1 < shuffled.length) {
-                    await prisma.duel.create({
-                        data: {
-                            roundId: round.id,
-                            homeParticipantId: shuffled[i].id,
-                            awayParticipantId: shuffled[i + 1].id,
-                            status: 'SCHEDULED'
-                        }
-                    })
-                }
-            }
-
-            await prisma.championship.update({
-                where: { id: championshipId },
-                data: { status: 'KNOCKOUT', currentStage: 'ROUND_OF_16' }
-            })
-
-            revalidatePath(`/campeonatos/${championship.slug}`)
-            return { success: true, message: "🥊 Mata-mata sorteado!" }
-        }
-
-        return { success: false, message: "Formato desconhecido." }
+        revalidatePath(`/campeonatos/${championship.slug}`)
+        return { success: true, message: "✅ Grupos Sorteados: 6 Rodadas (Ida e Volta) criadas!" }
 
     } catch (error) {
-        console.error(error)
+        console.error("Erro no sorteio:", error)
         return { success: false, message: "Erro ao realizar sorteio." }
     }
 }

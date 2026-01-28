@@ -4,19 +4,16 @@ import Link from "next/link"
 import { redirect, notFound } from "next/navigation"
 import { InternalNavbar } from "@/components/internal-navbar"
 import { revalidatePath } from "next/cache"
-import { ArrowLeft, Settings, ShieldAlert, Trophy, Users, UserMinus, UserPlus } from "lucide-react"
+import { ArrowLeft, Settings, ShieldAlert, Trophy, Users, UserMinus, UserPlus, Swords } from "lucide-react"
 import { DrawButton } from "@/components/admin/draw-button"
-// Se você tiver o InviteRescueButton, mantenha o import. Se não, comente.
-// import { InviteRescueButton } from "@/components/invite-rescue-button"
 
-// --- AÇÕES DE SERVIDOR (Mantendo o que você já tinha) ---
+// --- AÇÕES DE SERVIDOR (Gestão de Elenco) ---
 
 async function releaseTeam(formData: FormData) {
     'use server'
     const participantId = formData.get("participantId") as string
     const slug = formData.get("slug") as string
 
-    // Time fica sem dono (userId = null)
     await prisma.championshipParticipant.update({
         where: { id: participantId },
         data: { userId: null }
@@ -30,7 +27,6 @@ async function assumeTeam(formData: FormData) {
     const slug = formData.get("slug") as string
     const userId = formData.get("adminId") as string
 
-    // Admin assume o time
     await prisma.championshipParticipant.update({
         where: { id: participantId },
         data: { userId: userId }
@@ -97,7 +93,7 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                 <div className="space-y-8">
 
                     {/* =========================================================
-                        PAINEL 1: SORTEIO FIFA (NOVO)
+                        PAINEL 1: SORTEIO FIFA (GRUPOS)
                        ========================================================= */}
                     <section className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
                         <div className="bg-gradient-to-r from-indigo-900/40 to-[#121212] p-6 border-b border-white/5 flex items-center gap-4">
@@ -133,7 +129,45 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                     </section>
 
                     {/* =========================================================
-                        PAINEL 2: GESTÃO DE ELENCO (EXISTENTE - RESTAURADO)
+                        PAINEL 2: MATA-MATA (QUARTAS DE FINAL) - NOVO!
+                       ========================================================= */}
+                    <section className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
+                        <div className="bg-gradient-to-r from-orange-900/40 to-[#121212] p-6 border-b border-white/5 flex items-center gap-4">
+                            <div className="p-3 bg-orange-500/20 rounded-lg border border-orange-500/30">
+                                <Swords className="w-6 h-6 text-orange-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-black uppercase text-white">Mata-Mata</h2>
+                                <p className="text-xs text-gray-400 font-bold">Encerrar grupos e gerar Quartas de Final.</p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="text-xs text-gray-500 space-y-1 max-w-md">
+                                <p>Este botão deve ser clicado <strong>apenas quando a Fase de Grupos terminar</strong>.</p>
+                                <p>O sistema irá:</p>
+                                <ul className="list-disc pl-4 text-gray-400 font-medium">
+                                    <li>Classificar o 1º e 2º colocado de cada grupo (A, B, C, D).</li>
+                                    <li>Criar os cruzamentos automáticos (1ºA x 2ºB, etc).</li>
+                                    <li>Gerar a rodada "Quartas de Final".</li>
+                                </ul>
+                            </div>
+
+                            <form action={async () => {
+                                'use server'
+                                const { generateKnockoutAction } = await import("@/actions/generate-knockout")
+                                await generateKnockoutAction(championship.id)
+                            }}>
+                                <button className="w-full md:w-auto bg-orange-600 hover:bg-orange-500 text-white font-black uppercase px-6 py-4 rounded-xl flex items-center justify-center gap-3 shadow-xl transition-all hover:scale-[1.02] border border-white/10">
+                                    <Swords className="w-5 h-5" />
+                                    Gerar Quartas de Final
+                                </button>
+                            </form>
+                        </div>
+                    </section>
+
+                    {/* =========================================================
+                        PAINEL 3: GESTÃO DE ELENCO
                        ========================================================= */}
                     <section className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
                         <div className="bg-[#1a1a1a] p-6 border-b border-white/5 flex items-center gap-4">

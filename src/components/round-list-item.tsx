@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Calendar, ChevronRight, CheckCircle2, Trophy, Edit3, Eye, Trash2 } from "lucide-react"
+import { Calendar, ChevronRight, CheckCircle2, Trophy, Edit3, Eye, Trash2, Settings, Save, X, Lock } from "lucide-react"
 import { deleteRoundAction } from "@/actions/delete-round-action"
+import { updateRoundSettingsAction } from "@/actions/update-round-settings"
 
 interface RoundProps {
     round: {
@@ -19,46 +20,60 @@ interface RoundProps {
 }
 
 export function RoundListItem({ round, slug, canManage, currentUserId }: RoundProps) {
-    const [isOpen, setIsOpen] = useState(false)
-    const [isDeleting, setIsDeleting] = useState(false)
+    // Estados de UI
+    const [isOpen, setIsOpen] = useState(false) // Expandir detalhes
+    const [isDeleting, setIsDeleting] = useState(false) // Loading do delete
+    const [isEditing, setIsEditing] = useState(false) // Modo de edição
+    const [isSaving, setIsSaving] = useState(false) // Loading do save
 
+    // Datas
     const deadlineDate = new Date(round.deadline)
     const now = new Date()
+    const defaultDate = deadlineDate.toISOString().slice(0, 16) // Formato para input datetime-local
+
+    // Status Calculado
     const isClosed = now > deadlineDate || round.status === 'FINISHED' || round.status === 'CLOSED'
     const isOpenForBets = !isClosed && (round.status === 'OPEN' || round.status === 'SCHEDULED')
+    const isScheduled = round.status === 'SCHEDULED'
 
     const formattedDate = deadlineDate.toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
     })
 
+    // Lógica de Palpites/Jogos
     const predictedMatches = round.matches?.filter((m: any) =>
         m.predictions && m.predictions.some((p: any) => p.userId === currentUserId)
     ) || []
-
     const hasUserPredicted = predictedMatches.length > 0
     const matchesToShow = round.matches || []
     const showPredictions = matchesToShow.length > 0
 
+    // Configuração Visual do Status
     const statusConfig = {
         OPEN: { color: "text-emerald-500", label: "ABERTA", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
-        SCHEDULED: { color: "text-blue-400", label: "EM BREVE", bg: "bg-blue-500/10", border: "border-blue-500/20" },
-        CLOSED: { color: "text-orange-400", label: "EM ANDAMENTO", bg: "bg-orange-500/10", border: "border-orange-500/20" },
+        SCHEDULED: { color: "text-blue-400", label: "AGENDADA", bg: "bg-blue-500/10", border: "border-blue-500/20" },
+        CLOSED: { color: "text-orange-400", label: "FECHADA", bg: "bg-orange-500/10", border: "border-orange-500/20" },
         FINISHED: { color: "text-gray-400", label: "FINALIZADA", bg: "bg-gray-500/10", border: "border-gray-500/20" }
-    }[isClosed ? 'CLOSED' : (round.status || 'OPEN')] || { color: "text-gray-500", label: "DESCONHECIDO", bg: "bg-gray-500/10", border: "border-white/10" }
+    }[round.status] || { color: "text-gray-500", label: "DESCONHECIDO", bg: "bg-gray-500/10", border: "border-white/10" }
+
+    // --- AÇÕES ---
 
     async function handleDelete(e: React.MouseEvent) {
-        e.preventDefault()
-        e.stopPropagation()
+        e.preventDefault(); e.stopPropagation()
         if (!confirm(`Tem certeza que deseja EXCLUIR a rodada "${round.name}"?\nIsso apagará todos os jogos e palpites dela para sempre.`)) return
         setIsDeleting(true)
         const res = await deleteRoundAction(round.id)
-        if (!res.success) {
-            alert(res.message)
-            setIsDeleting(false)
-        }
+        if (!res.success) { alert(res.message); setIsDeleting(false) }
     }
+
+    async function handleSave(formData: FormData) {
+        setIsSaving(true)
+        await updateRoundSettingsAction(formData)
+        setIsSaving(false)
+        setIsEditing(false)
+    }
+
+    // --- RENDERIZAÇÃO ---
 
     if (isDeleting) {
         return (
@@ -72,7 +87,8 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
     return (
         <div className={`group relative bg-[#1a1a1a] border rounded-xl overflow-hidden transition-all hover:bg-[#202020] ${statusConfig.border}`}>
 
-            {canManage && (
+            {/* BOTÃO DELETAR (Só aparece se não estiver editando) */}
+            {canManage && !isEditing && (
                 <button
                     onClick={handleDelete}
                     className="absolute top-2 right-2 z-20 w-8 h-8 flex items-center justify-center rounded-lg bg-black/20 text-gray-600 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100 border border-white/5 hover:border-red-500"
@@ -82,85 +98,138 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                 </button>
             )}
 
-            <div
-                className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer"
-                onClick={() => showPredictions && setIsOpen(!isOpen)}
-            >
-                {/* INFO */}
-                <div className="flex items-start gap-4 flex-1">
-                    <div className={`w-1.5 h-12 rounded-full ${isClosed ? 'bg-gray-700' : 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]'}`} />
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
-                            <h3 className="text-xl font-black font-teko uppercase text-white leading-none tracking-wide">
-                                {round.name}
-                            </h3>
-                            {hasUserPredicted && (
-                                <span className="flex items-center gap-1 text-[9px] font-bold bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30 uppercase tracking-wider">
-                                    <CheckCircle2 className="w-3 h-3" /> Feito
-                                </span>
-                            )}
-                            {!isOpenForBets && (
+            {isEditing ? (
+                /* --- MODO EDIÇÃO (FORMULÁRIO) --- */
+                <form action={handleSave} className="p-5 flex flex-col md:flex-row items-center gap-4 animate-in fade-in slide-in-from-top-2 bg-[#151515]">
+                    <input type="hidden" name="roundId" value={round.id} />
+                    <input type="hidden" name="slug" value={slug} />
+
+                    <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Select Status */}
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-bold uppercase text-gray-500 pl-1">Status</label>
+                            <select name="status" defaultValue={round.status} className="w-full bg-black/40 border border-white/10 text-white text-xs font-bold rounded-lg px-3 py-2 focus:border-emerald-500 outline-none uppercase">
+                                <option value="SCHEDULED">🔒 Agendada (Bloqueada)</option>
+                                <option value="OPEN">✅ Aberta (Recebendo Palpites)</option>
+                                <option value="CLOSED">❌ Fechada (Calculando)</option>
+                                <option value="FINISHED">🏁 Finalizada</option>
+                            </select>
+                        </div>
+                        {/* Input Data */}
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-bold uppercase text-gray-500 pl-1">Data Limite</label>
+                            <input type="datetime-local" name="deadline" defaultValue={defaultDate} className="w-full bg-black/40 border border-white/10 text-white text-xs font-bold rounded-lg px-3 py-2 focus:border-emerald-500 outline-none" />
+                        </div>
+                    </div>
+
+                    {/* Botões Salvar/Cancelar */}
+                    <div className="flex items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
+                        <button type="button" onClick={() => setIsEditing(false)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"><X className="w-5 h-5" /></button>
+                        <button type="submit" disabled={isSaving} className="flex-1 md:flex-none px-6 py-2 rounded-lg bg-emerald-500 text-black font-black uppercase text-xs hover:bg-emerald-400 flex items-center justify-center gap-2">
+                            <Save className="w-4 h-4" /> {isSaving ? '...' : 'Salvar'}
+                        </button>
+                    </div>
+                </form>
+            ) : (
+                /* --- MODO VISUALIZAÇÃO (CARD NORMAL) --- */
+                <div
+                    className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer"
+                    onClick={() => showPredictions && setIsOpen(!isOpen)}
+                >
+                    {/* INFO DA RODADA */}
+                    <div className="flex items-start gap-4 flex-1">
+                        <div className={`w-1.5 h-12 rounded-full ${isClosed ? 'bg-gray-700' : 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]'}`} />
+                        <div>
+                            <div className="flex items-center gap-3 mb-1">
+                                <h3 className="text-xl font-black font-teko uppercase text-white leading-none tracking-wide">
+                                    {round.name}
+                                </h3>
+                                {isScheduled && <Lock className="w-3 h-3 text-gray-500" />}
+                                {hasUserPredicted && (
+                                    <span className="flex items-center gap-1 text-[9px] font-bold bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30 uppercase tracking-wider">
+                                        <CheckCircle2 className="w-3 h-3" /> Feito
+                                    </span>
+                                )}
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${statusConfig.bg} ${statusConfig.color}`}>
                                     {statusConfig.label}
                                 </span>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
-                            <div className="flex items-center gap-1.5">
-                                <Calendar className="w-3.5 h-3.5 text-gray-600" />
-                                <span>Encerra: <span className="text-gray-300 font-bold">{formattedDate}</span></span>
                             </div>
-                            {round.matches && (
-                                <div className="hidden sm:flex items-center gap-1.5">
-                                    <Trophy className="w-3.5 h-3.5 text-gray-600" />
-                                    <span>{round.matches.length} Jogos</span>
+                            <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
+                                <div className="flex items-center gap-1.5">
+                                    <Calendar className="w-3.5 h-3.5 text-gray-600" />
+                                    <span>{round.status === 'OPEN' ? 'Encerra:' : 'Data:'} <span className="text-gray-300 font-bold">{formattedDate}</span></span>
                                 </div>
-                            )}
+                                {round.matches && (
+                                    <div className="hidden sm:flex items-center gap-1.5">
+                                        <Trophy className="w-3.5 h-3.5 text-gray-600" />
+                                        <span>{round.matches.length} Jogos</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                {/* BOTÕES */}
-                <div className="flex items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
-                    {showPredictions && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-                            className="h-10 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-[10px] font-bold uppercase transition-all flex items-center gap-2 hover:text-white"
+                    {/* BOTÕES DE AÇÃO */}
+                    <div className="flex items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
+                        {/* Botão Ver Jogos (Seta) */}
+                        {showPredictions && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+                                className="h-10 px-4 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-[10px] font-bold uppercase transition-all flex items-center gap-2 hover:text-white"
+                            >
+                                {isOpen ? 'Ocultar' : 'Ver Jogos'}
+                                <ChevronRight className={`w-3 h-3 transition-transform duration-300 ${isOpen ? 'rotate-90' : ''}`} />
+                            </button>
+                        )}
+
+                        {/* Botão Engrenagem (Admin) */}
+                        {canManage && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                                className="h-10 w-10 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 hover:text-white transition-colors"
+                                title="Editar Prazo e Status"
+                            >
+                                <Settings className="w-4 h-4" />
+                            </button>
+                        )}
+
+                        {/* Botão Principal (Palpitar/Cartela) */}
+                        <Link
+                            href={`/campeonatos/${slug}/rodada/${round.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`flex-1 md:flex-none h-10 px-6 rounded-lg flex items-center justify-center gap-2 font-black uppercase text-xs tracking-widest transition-all 
+                                ${round.status === 'OPEN'
+                                ? "bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                                : "bg-white/5 hover:bg-white/10 text-white border border-white/10"}`}
                         >
-                            {isOpen ? 'Ocultar' : 'Ver Jogos'}
-                            <ChevronRight className={`w-3 h-3 transition-transform duration-300 ${isOpen ? 'rotate-90' : ''}`} />
-                        </button>
-                    )}
-
-                    <Link
-                        href={`/campeonatos/${slug}/rodada/${round.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className={`flex-1 md:flex-none h-10 px-6 rounded-lg flex items-center justify-center gap-2 font-black uppercase text-xs tracking-widest transition-all ${isOpenForBets ? "bg-emerald-500 hover:bg-emerald-400 text-black shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "bg-white/5 hover:bg-white/10 text-white border border-white/10"}`}
-                    >
-                        {isOpenForBets ? <><Edit3 className="w-4 h-4" /> Palpitar</> : <><Eye className="w-4 h-4" /> CARTELA</>}
-                    </Link>
+                            {round.status === 'OPEN' ? <><Edit3 className="w-4 h-4" /> Palpitar</> : <><Eye className="w-4 h-4" /> Ver</>}
+                        </Link>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {/* --- LISTA DE RESULTADOS --- */}
-            {isOpen && showPredictions && (
+            {/* --- LISTA DE RESULTADOS (EXPANSÃO) --- */}
+            {!isEditing && isOpen && showPredictions && (
                 <div className="bg-[#0f0f0f] border-t border-white/5 p-3 animate-in slide-in-from-top-2 duration-300">
                     <div className="space-y-2">
                         {matchesToShow.map((match: any) => {
-                            const prediction = match.predictions?.find((p:any) => p.userId === currentUserId)
+                            const prediction = match.predictions?.find((p: any) => p.userId === currentUserId)
 
-                            // CORREÇÃO: Ler apenas de homeScore/awayScore
+                            // Scores Reais
                             const realHome = match.homeScore
                             const realAway = match.awayScore
                             const hasRealScore = realHome !== null && realAway !== null
 
-                            const isLive = match.status === 'LIVE' || match.status === 'IN_PLAY' || match.status === '1H' || match.status === '2H' || match.status === 'HT'
-                            const isFinished = match.status === 'FINISHED' || match.status === 'FT' || hasRealScore
+                            // Status do Jogo
+                            const isLive = ['LIVE', 'IN_PLAY', '1H', '2H', 'HT'].includes(match.status)
+                            const isFinished = ['FINISHED', 'FT'].includes(match.status) || hasRealScore
 
+                            // Datas
                             const matchDate = new Date(match.date)
                             const timeString = matchDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                             const dateString = matchDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 
+                            // Estilos de Resultado
                             let resultBorder = "border-white/5"
                             let bgClass = "bg-[#161616]"
                             let pointsText = "text-gray-600"
@@ -185,24 +254,28 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                             return (
                                 <div key={match.id} className={`flex flex-wrap md:flex-nowrap items-center justify-between p-2 rounded-lg border transition-all gap-2 ${bgClass} ${resultBorder}`}>
 
+                                    {/* DATA */}
                                     <div className="flex flex-col items-center justify-center min-w-[40px] border-r border-white/5 mr-1 pr-2 py-1 hidden sm:flex">
                                         <span className="text-[9px] text-gray-500 font-bold uppercase">{dateString}</span>
                                         <span className="text-xs text-white font-mono font-black tracking-tighter">{timeString}</span>
                                     </div>
 
+                                    {/* TIMES */}
                                     <div className="flex items-center gap-3 w-full md:w-auto justify-center md:justify-start mb-2 md:mb-0 flex-1 md:flex-none">
                                         <div className="flex flex-col items-center w-10">
-                                            {match.homeLogo ? <img src={match.homeLogo} className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-gray-800 rounded-full"/>}
+                                            {match.homeLogo ? <img src={match.homeLogo} className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-gray-800 rounded-full" />}
                                             <span className="text-[8px] font-bold text-gray-400 truncate w-full text-center mt-1 max-w-[50px]">{match.homeTeam?.substring(0, 3).toUpperCase()}</span>
                                         </div>
                                         <span className="text-[10px] font-bold text-gray-600">X</span>
                                         <div className="flex flex-col items-center w-10">
-                                            {match.awayLogo ? <img src={match.awayLogo} className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-gray-800 rounded-full"/>}
+                                            {match.awayLogo ? <img src={match.awayLogo} className="w-6 h-6 object-contain" /> : <div className="w-6 h-6 bg-gray-800 rounded-full" />}
                                             <span className="text-[8px] font-bold text-gray-400 truncate w-full text-center mt-1 max-w-[50px]">{match.awayTeam?.substring(0, 3).toUpperCase()}</span>
                                         </div>
                                     </div>
 
+                                    {/* PLACARES (PALPITE VS REAL) */}
                                     <div className="flex items-center justify-center gap-4 flex-1">
+                                        {/* Palpite */}
                                         <div className="flex flex-col items-center">
                                             <span className="text-[7px] text-gray-500 font-black uppercase tracking-widest mb-0.5">Seu</span>
                                             {prediction ? (
@@ -214,6 +287,7 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                                             )}
                                         </div>
 
+                                        {/* Real */}
                                         {(isLive || isFinished) ? (
                                             <div className="flex flex-col items-center">
                                                 <span className={`text-[7px] font-black uppercase tracking-widest mb-0.5 ${isLive ? 'text-red-500 animate-pulse' : 'text-emerald-500'}`}>{isLive ? 'Ao Vivo' : 'Real'}</span>
@@ -229,6 +303,7 @@ export function RoundListItem({ round, slug, canManage, currentUserId }: RoundPr
                                         )}
                                     </div>
 
+                                    {/* PONTUAÇÃO */}
                                     <div className="w-auto md:w-[15%] flex justify-end pl-2 border-l border-white/5 md:border-none min-w-[50px]">
                                         <div className="flex flex-col items-end">
                                             <span className={`text-xl font-black font-teko leading-none ${pointsText}`}>{pointsLabel}</span>

@@ -6,6 +6,9 @@ import { InternalNavbar } from "@/components/internal-navbar"
 import { Leaderboard } from "@/components/leaderboard"
 import { InviteButton } from "@/components/invite-button"
 import { RoundListItem } from "@/components/round-list-item"
+// --- ADICIONADO: ---
+import { DuelBanner } from "@/components/duel-banner"
+import { Swords } from "lucide-react"
 
 export default async function CampeonatoPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
@@ -22,13 +25,13 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
 
     if (!currentUser) redirect("/login")
 
-    // 2. CAMPEONATO (QUERY CORRIGIDA)
+    // 2. CAMPEONATO
     const championshipData = await prisma.championship.findUnique({
         where: { slug },
         include: {
             owner: true,
             rounds: {
-                orderBy: { createdAt: 'desc' },
+                orderBy: { createdAt: 'desc' }, // Traz as rodadas mais novas primeiro
                 include: {
                     matches: {
                         orderBy: { date: 'asc' },
@@ -46,7 +49,7 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
                 include: {
                     user: {
                         include: {
-                            predictions: true
+                            predictions: true // Busca os palpites dentro do user
                         }
                     }
                 }
@@ -56,10 +59,10 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
 
     if (!championshipData) return <div>Campeonato não encontrado</div>
 
-    // Casting para any para manipular os dados livremente
+    // Casting para manipular livremente
     const camp: any = championshipData
 
-    // Normaliza participantes para o Leaderboard
+    // Normaliza participantes para o Leaderboard (Sobe os predictions do user pro participant)
     camp.participants = camp.participants.map((p: any) => ({
         ...p,
         predictions: p.user.predictions || []
@@ -70,14 +73,17 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
     const isAdmin = currentUser.role === 'ADMIN'
     const canManage = isOwner || isAdmin
 
-    // Active Round
-    const activeRound = camp.rounds[0] || null
+    // --- LÓGICA DO BANNER (IDENTIFICAR RODADA ATIVA) ---
+    // Procura primeiro uma ABERTA, se não tiver, pega uma AGENDADA.
+    const activeRoundForBanner = camp.rounds.find((r:any) => r.status === 'OPEN')
+        || camp.rounds.find((r:any) => r.status === 'SCHEDULED')
+        || camp.rounds[0] // Fallback para a última criada
 
     return (
         <div className="min-h-screen bg-[#050505] text-white pb-20 font-sans selection:bg-emerald-500 selection:text-black">
             <InternalNavbar />
 
-            {/* HEADER */}
+            {/* HEADER (Seu visual original com blur) */}
             <div className="relative bg-[#121212] border-b border-white/10 py-10 px-4 mb-8 overflow-hidden">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-600/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -116,44 +122,63 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
             </div>
 
             <main className="max-w-6xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* RODADAS */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-black italic font-teko uppercase flex items-center gap-2">
-                            <span className="text-white text-3xl">📅</span> Rodadas & Jogos
-                        </h2>
-                        {canManage && (
-                            <Link href={`/campeonatos/${slug}/nova-rodada`} className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase px-4 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 hover:scale-105">
-                                <span className="text-sm leading-none">+</span> Nova Rodada
-                            </Link>
-                        )}
-                    </div>
 
-                    <div className="space-y-3">
-                        {camp.rounds.length === 0 ? (
-                            <div className="text-center py-16 border border-dashed border-white/10 rounded-xl bg-white/5">
-                                <p className="text-gray-500 mb-4">Nenhuma rodada criada ainda.</p>
-                                {canManage && (
-                                    <Link href={`/campeonatos/${slug}/nova-rodada`} className="text-emerald-500 font-bold text-sm hover:underline">
-                                        Criar a primeira rodada agora
-                                    </Link>
-                                )}
+                {/* COLUNA ESQUERDA: DUELO + RODADAS */}
+                <div className="lg:col-span-2 space-y-8">
+
+                    {/* 🔥 1. BANNER DO DUELO (NOVO) 🔥 */}
+                    {activeRoundForBanner && (
+                        <div className="animate-in slide-in-from-top-4 duration-500">
+                            <div className="flex items-center justify-between mb-4 px-1">
+                                <h2 className="text-xl font-black italic uppercase text-white flex items-center gap-2">
+                                    <Swords className="w-5 h-5 text-emerald-400" />
+                                    Seu Duelo na {activeRoundForBanner.name}
+                                </h2>
                             </div>
-                        ) : (
-                            camp.rounds.map((round: any) => (
-                                <RoundListItem
-                                    key={round.id}
-                                    round={round}
-                                    slug={slug}
-                                    canManage={canManage}
-                                    currentUserId={userId} // PASSANDO O ID DO USUÁRIO PARA O COMPONENTE
-                                />
-                            ))
-                        )}
+                            {/* Passamos o ID da rodada ativa para buscar o rival */}
+                            <DuelBanner roundId={activeRoundForBanner.id} currentUserId={userId} />
+                        </div>
+                    )}
+
+                    {/* 2. LISTA DE RODADAS */}
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-2xl font-black italic font-teko uppercase flex items-center gap-2">
+                                <span className="text-white text-3xl">📅</span> Rodadas & Jogos
+                            </h2>
+                            {canManage && (
+                                <Link href={`/campeonatos/${slug}/nova-rodada`} className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase px-4 py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 hover:scale-105">
+                                    <span className="text-sm leading-none">+</span> Nova Rodada
+                                </Link>
+                            )}
+                        </div>
+
+                        <div className="space-y-3">
+                            {camp.rounds.length === 0 ? (
+                                <div className="text-center py-16 border border-dashed border-white/10 rounded-xl bg-white/5">
+                                    <p className="text-gray-500 mb-4">Nenhuma rodada criada ainda.</p>
+                                    {canManage && (
+                                        <Link href={`/campeonatos/${slug}/nova-rodada`} className="text-emerald-500 font-bold text-sm hover:underline">
+                                            Criar a primeira rodada agora
+                                        </Link>
+                                    )}
+                                </div>
+                            ) : (
+                                camp.rounds.map((round: any) => (
+                                    <RoundListItem
+                                        key={round.id}
+                                        round={round}
+                                        slug={slug}
+                                        canManage={canManage}
+                                        currentUserId={userId}
+                                    />
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
 
-                {/* CLASSIFICAÇÃO */}
+                {/* COLUNA DIREITA: CLASSIFICAÇÃO */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-2xl font-black italic font-teko uppercase flex items-center gap-2">
@@ -169,7 +194,7 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
 
                     <Leaderboard
                         participants={camp.participants}
-                        currentRound={activeRound}
+                        currentRound={activeRoundForBanner} // Usa a mesma rodada do banner para calcular pontos ao vivo
                         currentUserId={userId}
                     />
                 </div>

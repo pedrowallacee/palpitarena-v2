@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from "react"
-import { Eye, Flame, Trophy, AlertTriangle, Scale, Info, Medal, Swords, ShieldCheck } from "lucide-react"
+import { Flame, Trophy, AlertTriangle, Scale, Info, Medal, Swords, ShieldCheck } from "lucide-react"
 
 // --- TIPOS ---
 interface Prediction {
@@ -11,7 +11,7 @@ interface Prediction {
     userId: string
     pointsEarned?: number
     exactScore?: boolean
-    createdAt?: string | Date // Importante para o detector de tempo
+    createdAt?: string | Date
 }
 
 interface User {
@@ -23,6 +23,11 @@ interface Participant {
     id: string
     userId: string
     points: number
+    // Campos de Grupo
+    group?: string | null
+    groupPoints?: number
+    groupWins?: number
+
     exactScores: number
     wins: number | null
     matchesPlayed: number | null
@@ -41,40 +46,55 @@ interface LeaderboardProps {
 export function Leaderboard({ participants = [], currentRound, currentUserId }: LeaderboardProps) {
     const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null)
     const [showRules, setShowRules] = useState(false)
-
-    // Estado para ativar o "Modo Duelo" (Comparação direta)
     const [isDirectOpponent, setIsDirectOpponent] = useState(false)
-
-    // Reseta o modo duelo quando fecha ou troca de usuário
-    useEffect(() => {
-        setIsDirectOpponent(false)
-    }, [selectedParticipant])
 
     // Acha meus dados
     const myData = Array.isArray(participants) ? participants.find((p: any) => p.userId === currentUserId) : null
 
-    // Maior pontuação para definir o Líder (Fogo)
-    const maxPoints = Math.max(...(participants.map((p: any) => p.points) || [0]))
+    // --- LÓGICA DE GRUPOS ---
+    const groups = Array.from(new Set(participants.map((p: any) => p.group).filter(Boolean))).sort()
+    const hasGroups = groups.length > 0
 
-    // Ordenação: Pontos > Cravadas > Nome do Time/User
-    const sorted = [...participants].sort((a: any, b: any) => {
-        if (b.points !== a.points) return b.points - a.points
+    // Aba Ativa
+    const [activeTab, setActiveTab] = useState(myData?.group || groups[0] || 'GERAL')
+
+    useEffect(() => {
+        if (myData?.group) setActiveTab(myData.group)
+    }, [myData?.group])
+
+    // Filtra a lista
+    const filteredParticipants = hasGroups
+        ? participants.filter((p: any) => p.group === activeTab)
+        : participants
+
+    // --- ORDENAÇÃO ---
+    const sorted = [...filteredParticipants].sort((a: any, b: any) => {
+        const pointsA = hasGroups ? (a.groupPoints || 0) : a.points
+        const pointsB = hasGroups ? (b.groupPoints || 0) : b.points
+
+        if (pointsB !== pointsA) return pointsB - pointsA
+
+        const winsA = hasGroups ? (a.groupWins || 0) : (a.wins || 0)
+        const winsB = hasGroups ? (b.groupWins || 0) : (b.wins || 0)
+        if (winsB !== winsA) return winsB - winsA
+
         const exactA = a.exactScores || 0
         const exactB = b.exactScores || 0
         if (exactB !== exactA) return exactB - exactA
+
         return (a.teamName || a.user.name || "").localeCompare(b.teamName || b.user.name || "")
     })
 
-    // --- CÁLCULO DE CÓPIAS (SÓ CONTA SE FOR O OPONENTE SELECIONADO) ---
+    const maxPointsCurrentTab = Math.max(...(sorted.map((p: any) => hasGroups ? p.groupPoints : p.points) || [0]))
+
+    // --- CÁLCULO DE CÓPIAS ---
     let copyCount = 0
     if (selectedParticipant && myData && currentRound && currentRound.matches) {
         currentRound.matches.forEach((match: any) => {
             const myPreds = (myData as any).predictions || []
             const advPreds = (selectedParticipant as any).predictions || []
-
             const myPred = myPreds.find((p: any) => p.matchId === match.id)
             const advPred = advPreds.find((p: any) => p.matchId === match.id)
-
             if (myPred && advPred && myPred.homeScore === advPred.homeScore && myPred.awayScore === advPred.awayScore) {
                 copyCount++
             }
@@ -86,38 +106,69 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
     const isExceeded = copyCount > allowedCopies
 
     return (
-        <>
-            <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col font-sans">
-                {/* CABEÇALHO DA TABELA */}
-                <div className="bg-[#1a1a1a] flex items-center text-[9px] md:text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-white/5 py-3 px-2">
-                    <div className="w-8 text-center">Pos</div>
-                    <div className="flex-1 text-left pl-2">Clube / Treinador</div>
-                    <div className="flex items-center gap-0 md:gap-2 text-center">
-                        <div className="w-8 md:w-10 text-white font-black">PTS</div>
-                        <div className="w-8 md:w-10 text-gray-400" title="Cravadas">CRAV</div>
-                    </div>
-                </div>
+        <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col font-sans">
 
-                {/* LISTA DE PARTICIPANTES */}
-                <div className="divide-y divide-white/5 bg-[#0f0f0f]">
-                    {sorted.map((p: any, index: number) => {
+            {/* --- NAVEGAÇÃO DE GRUPOS (ABAS) --- */}
+            {hasGroups && (
+                <div className="flex items-center bg-[#0a0a0a] border-b border-white/5 p-1 overflow-x-auto gap-1 scrollbar-hide">
+                    {groups.map(group => (
+                        <button
+                            key={group as string}
+                            onClick={() => setActiveTab(group as string)}
+                            className={`flex-1 min-w-[50px] py-2 text-[10px] font-black uppercase rounded transition-all
+                                ${activeTab === group
+                                ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                                : 'text-gray-500 hover:bg-white/5 hover:text-white'}`}
+                        >
+                            GRP {group as string}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/* CABEÇALHO DA TABELA */}
+            <div className="bg-[#1a1a1a] flex items-center text-[9px] md:text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-white/5 py-3 px-2">
+                <div className="w-8 text-center">Pos</div>
+                <div className="flex-1 text-left pl-2">Clube / Treinador</div>
+                <div className="flex items-center gap-0 md:gap-2 text-center">
+                    <div className="w-8 md:w-10 text-white font-black">PTS</div>
+                    <div className="w-8 md:w-10 text-gray-400" title="Cravadas">CRAV</div>
+                </div>
+            </div>
+
+            {/* LISTA DE PARTICIPANTES */}
+            <div className="divide-y divide-white/5 bg-[#0f0f0f] max-h-[500px] overflow-y-auto">
+                {sorted.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-gray-500 font-bold uppercase">Grupo Vazio</div>
+                ) : (
+                    sorted.map((p: any, index: number) => {
                         const pos = index + 1
-                        const isBestCampaign = p.points === maxPoints && p.points > 0
+                        const points = hasGroups ? (p.groupPoints || 0) : p.points
+
+                        const isBestCampaign = points === maxPointsCurrentTab && points > 0
                         const isMe = p.userId === currentUserId
 
                         let posContent: React.ReactNode = <span className="text-gray-500 font-mono">{pos}</span>
                         let rowBorder = "border-l-2 border-transparent"
 
-                        if (pos === 1) {
-                            posContent = <Trophy className="w-4 h-4 text-yellow-500 mx-auto" />
-                            rowBorder = "border-l-2 border-yellow-500 bg-yellow-500/5"
-                        } else if (pos === 2) {
-                            posContent = <Medal className="w-4 h-4 text-gray-300 mx-auto" />
-                        } else if (pos === 3) {
-                            posContent = <Medal className="w-4 h-4 text-amber-700 mx-auto" />
+                        // Lógica de Cores
+                        if (hasGroups) {
+                            if (pos <= 2) {
+                                rowBorder = "border-l-2 border-emerald-500 bg-emerald-500/5"
+                                posContent = <span className="text-emerald-500 font-black">{pos}º</span>
+                            }
+                        } else {
+                            if (pos === 1) {
+                                posContent = <Trophy className="w-4 h-4 text-yellow-500 mx-auto" />
+                                rowBorder = "border-l-2 border-yellow-500 bg-yellow-500/5"
+                            } else if (pos === 2) {
+                                posContent = <Medal className="w-4 h-4 text-gray-300 mx-auto" />
+                            } else if (pos === 3) {
+                                posContent = <Medal className="w-4 h-4 text-amber-700 mx-auto" />
+                            }
                         }
 
-                        if (isMe) rowBorder += " border-emerald-500 bg-emerald-500/5"
+                        if (isMe) rowBorder = "border-l-2 border-blue-500 bg-blue-500/10"
 
                         return (
                             <button
@@ -128,8 +179,7 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                 <div className="w-8 text-center">{posContent}</div>
 
                                 <div className="flex-1 flex items-center gap-3 pl-2 min-w-0">
-                                    {/* LOGO DO TIME */}
-                                    <div className="relative w-10 h-10 flex-shrink-0">
+                                    <div className="relative w-8 h-8 md:w-10 md:h-10 flex-shrink-0">
                                         {p.teamLogo ? (
                                             <img src={p.teamLogo} className="w-full h-full object-contain" alt={p.teamName} />
                                         ) : (
@@ -138,44 +188,40 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                             </div>
                                         )}
                                         {isBestCampaign && (
-                                            <div className="absolute -top-1 -right-1 bg-orange-500 rounded-full p-0.5 border border-[#0f0f0f] animate-pulse" title="Melhor Campanha">
+                                            <div className="absolute -top-1 -right-1 bg-orange-500 rounded-full p-0.5 border border-[#0f0f0f] animate-pulse">
                                                 <Flame className="w-3 h-3 text-white fill-white" />
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* INFO (Time em destaque, User pequeno) */}
                                     <div className="flex flex-col items-start truncate">
                                         <div className="flex items-center gap-2">
-                                            <span className={`text-sm font-bold truncate ${isMe ? 'text-emerald-400' : 'text-white'} group-hover:text-emerald-300`}>
+                                            <span className={`text-sm font-bold truncate ${isMe ? 'text-blue-400' : 'text-white'} group-hover:text-emerald-300`}>
                                                 {p.teamName || "Sem Clube"}
                                             </span>
-                                            {isMe && <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1 rounded uppercase tracking-wider font-bold">VOCÊ</span>}
+                                            {isMe && <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1 rounded uppercase tracking-wider font-bold">VOCÊ</span>}
                                         </div>
-
                                         <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide truncate">
                                             {p.user.name}
                                         </span>
                                     </div>
                                 </div>
 
-                                {/* PONTUAÇÃO */}
                                 <div className="flex items-center gap-0 md:gap-2 text-center text-xs font-mono">
-                                    <div className="w-8 md:w-10 font-black text-white text-sm">{p.points}</div>
+                                    <div className="w-8 md:w-10 font-black text-white text-sm">{points}</div>
                                     <div className="w-8 md:w-10 text-gray-500 font-bold">{p.exactScores || 0}</div>
                                 </div>
                             </button>
                         )
-                    })}
-                </div>
+                    })
+                )}
             </div>
 
-            {/* --- MODAL DA CARTELA --- */}
+            {/* --- MODAL --- */}
             {selectedParticipant && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelectedParticipant(null)}>
                     <div className="bg-[#121212] w-full max-w-md rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
 
-                        {/* CABEÇALHO DO MODAL */}
                         <div className="relative bg-gradient-to-br from-[#1a1a1a] via-[#151515] to-[#121212] p-6 text-center border-b border-white/5">
                             <button onClick={() => setSelectedParticipant(null)} className="absolute top-4 right-4 z-10 w-8 h-8 bg-black/40 hover:bg-white/20 rounded-full text-white flex items-center justify-center transition-all">✕</button>
 
@@ -192,7 +238,12 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                             <h2 className="text-2xl font-black font-teko uppercase text-white leading-none mb-1">{selectedParticipant.teamName || "Sem Clube"}</h2>
                             <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-4">Treinador: {selectedParticipant.user.name}</p>
 
-                            {/* CONTROLES DE OPONENTE (Só aparece se não for você) */}
+                            {selectedParticipant.group && (
+                                <div className="mb-4 inline-block px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-400 text-xs font-bold uppercase">
+                                    Grupo {selectedParticipant.group}
+                                </div>
+                            )}
+
                             {selectedParticipant.userId !== currentUserId && (
                                 <div className="flex flex-col items-center gap-3">
                                     <button
@@ -203,7 +254,6 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                         {isDirectOpponent ? "Modo Duelo Ativo" : "Comparar Comigo"}
                                     </button>
 
-                                    {/* PLACAR DE CÓPIAS (Só aparece se modo duelo ativo) */}
                                     {isDirectOpponent && (
                                         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isExceeded ? 'bg-red-500/10 border-red-500/50 text-red-400' : 'bg-white/5 border-white/10 text-gray-400'}`}>
                                             <Scale className="w-3 h-3" />
@@ -216,7 +266,6 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                             )}
                         </div>
 
-                        {/* LISTA DE JOGOS */}
                         <div className="p-4 flex-1 overflow-y-auto bg-[#0a0a0a]">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
@@ -227,13 +276,9 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                 </button>
                             </div>
 
-                            {/* REGRAS ANTI-CÓPIA (ATUALIZADO E COMPLETO) */}
                             {showRules && (
                                 <div className="bg-[#151515] border border-white/10 rounded-lg p-3 mb-4 text-[10px] text-gray-400 space-y-1 animate-in fade-in slide-in-from-top-2">
-                                    <p className="text-white font-bold mb-2 uppercase border-b border-white/5 pb-1">
-                                        📋 Limites de Cópia (50%):
-                                    </p>
-
+                                    <p className="text-white font-bold mb-2 uppercase border-b border-white/5 pb-1">📋 Limites de Cópia (50%):</p>
                                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
                                         <div>[ 06 Jogos ] - <span className="text-emerald-400 font-bold">Max 3</span></div>
                                         <div>[ 08 Jogos ] - <span className="text-emerald-400 font-bold">Max 4</span></div>
@@ -244,13 +289,9 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                         <div>[ 18 Jogos ] - <span className="text-emerald-400 font-bold">Max 9</span></div>
                                         <div>[ 20 Jogos ] - <span className="text-emerald-400 font-bold">Max 10</span></div>
                                     </div>
-
                                     <div className="mt-3 pt-2 border-t border-white/5">
                                         <p className="text-red-400 font-bold uppercase flex items-center gap-1">
                                             <AlertTriangle className="w-3 h-3" /> Punição: W.O na rodada.
-                                        </p>
-                                        <p className="text-[9px] opacity-60">
-                                            Considera-se cópia apenas palpites **idênticos** ao do adversário direto.
                                         </p>
                                     </div>
                                 </div>
@@ -263,28 +304,17 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                     const advPred = advPreds.find((p: any) => p.matchId === match.id)
                                     const myPred = myPreds.find((p: any) => p.matchId === match.id)
 
-                                    // LÓGICA DO DETECTOR DE CÓPIA
                                     const isCopy = selectedParticipant.userId !== currentUserId && advPred && myPred && advPred.homeScore === myPred.homeScore && advPred.awayScore === myPred.awayScore
+                                    const highlightCopy = isCopy && isDirectOpponent
 
-                                    // QUEM FEZ PRIMEIRO? (Detector Temporal)
                                     let timeStatus = null
                                     if (isCopy && advPred?.createdAt && myPred?.createdAt) {
                                         const advDate = new Date(advPred.createdAt)
                                         const myDate = new Date(myPred.createdAt)
-
-                                        if (myDate < advDate) {
-                                            // Eu fiz antes -> Eu sou o original
-                                            timeStatus = "original"
-                                        } else {
-                                            // Ele fez antes -> Eu copiei (ou fiz depois)
-                                            timeStatus = "copia"
-                                        }
+                                        if (myDate < advDate) timeStatus = "original"
+                                        else timeStatus = "copia"
                                     }
 
-                                    // Só destaca se for cópia E o modo duelo estiver ligado
-                                    const highlightCopy = isCopy && isDirectOpponent
-
-                                    // Cores do resultado (Verde se acertou, etc)
                                     let borderColor = "border-white/5"
                                     let scoreColor = "text-white"
                                     let pointsBadge = null
@@ -301,15 +331,11 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
 
                                     return (
                                         <div key={match.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${highlightCopy ? 'bg-red-500/5 border-red-500/20' : `bg-white/5 ${borderColor}`}`}>
-
-                                            {/* TIME CASA */}
                                             <div className="flex items-center gap-2 text-xs font-bold text-gray-300 w-[30%] justify-end">
                                                 <span className="truncate hidden sm:block">{match.homeTeam}</span>
                                                 <span className="truncate sm:hidden">{match.homeTeam.substring(0,3).toUpperCase()}</span>
                                                 {match.homeLogo && <img src={match.homeLogo} className="w-5 h-5 object-contain" />}
                                             </div>
-
-                                            {/* PLACAR */}
                                             <div className="flex flex-col items-center gap-1 min-w-[100px]">
                                                 <div className={`px-2 py-1 rounded font-mono text-sm font-bold border shadow-inner w-full text-center flex items-center justify-center gap-1 ${highlightCopy ? 'bg-red-500/20 border-red-500/50 text-red-200' : 'bg-black/40 border-white/10 ' + scoreColor}`}>
                                                     {advPred ? (
@@ -318,33 +344,16 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                                         <span className="text-gray-600">- x -</span>
                                                     )}
                                                 </div>
-
-                                                {/* STATUS DO DUELO (QUEM COPIOU QUEM) */}
                                                 <div className="h-4 flex items-center justify-center gap-2">
                                                     {highlightCopy ? (
                                                         <>
-                                                            {/* SE EU FIZ ANTES -> ELE É A CÓPIA */}
-                                                            {timeStatus === 'original' && (
-                                                                <span className="flex items-center gap-1 text-[8px] font-black uppercase text-red-400 bg-red-500/10 px-1.5 rounded border border-red-500/20 animate-pulse" title="Você palpitou antes dele">
-                                                                    <AlertTriangle className="w-2.5 h-2.5" /> ELE COPIOU
-                                                                </span>
-                                                            )}
-                                                            {/* SE ELE FEZ ANTES -> EU SOU A CÓPIA */}
-                                                            {timeStatus === 'copia' && (
-                                                                <span className="flex items-center gap-1 text-[8px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-1.5 rounded border border-emerald-500/20" title="Ele palpitou antes de você">
-                                                                    <ShieldCheck className="w-2.5 h-2.5" /> ORIGINAL
-                                                                </span>
-                                                            )}
-                                                            {/* SEM DATA (ANTIGO) */}
+                                                            {timeStatus === 'original' && <span className="flex items-center gap-1 text-[8px] font-black uppercase text-red-400 bg-red-500/10 px-1.5 rounded border border-red-500/20 animate-pulse"><AlertTriangle className="w-2.5 h-2.5" /> COPIOU</span>}
+                                                            {timeStatus === 'copia' && <span className="flex items-center gap-1 text-[8px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-1.5 rounded border border-emerald-500/20"><ShieldCheck className="w-2.5 h-2.5" /> ORIGINAL</span>}
                                                             {!timeStatus && <span className="text-[8px] font-black uppercase text-gray-500">IGUAL</span>}
                                                         </>
-                                                    ) : (
-                                                        pointsBadge
-                                                    )}
+                                                    ) : pointsBadge}
                                                 </div>
                                             </div>
-
-                                            {/* TIME FORA */}
                                             <div className="flex items-center gap-2 text-xs font-bold text-gray-300 w-[30%]">
                                                 {match.awayLogo && <img src={match.awayLogo} className="w-5 h-5 object-contain" />}
                                                 <span className="truncate hidden sm:block">{match.awayTeam}</span>
@@ -358,6 +367,6 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                     </div>
                 </div>
             )}
-        </>
+        </div>
     )
 }
