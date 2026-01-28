@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma"
 import { COMPETITION_LIST, COMPETITION_CATEGORIES } from "@/lib/ranking-rules"
 import { AdminHistoryForm } from "./form" // Vamos criar o form separado abaixo
 
+export const dynamic = 'force-dynamic'
+
 export default async function AdminHistoryPage() {
     // 1. Buscar todos os usuários para o dropdown
     const users = await prisma.user.findMany({
