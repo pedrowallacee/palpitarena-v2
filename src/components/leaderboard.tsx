@@ -27,6 +27,12 @@ interface Participant {
     group?: string | null
     groupPoints?: number
     groupWins?: number
+    groupSG?: number      // <--- IMPORTANTE
+    groupGF?: number      // <--- IMPORTANTE
+
+    // Campos Gerais
+    goalDifference?: number
+    goalsScored?: number
 
     exactScores: number
     wins: number | null
@@ -48,40 +54,50 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
     const [showRules, setShowRules] = useState(false)
     const [isDirectOpponent, setIsDirectOpponent] = useState(false)
 
-    // Acha meus dados
     const myData = Array.isArray(participants) ? participants.find((p: any) => p.userId === currentUserId) : null
 
     // --- LÓGICA DE GRUPOS ---
     const groups = Array.from(new Set(participants.map((p: any) => p.group).filter(Boolean))).sort()
     const hasGroups = groups.length > 0
 
-    // Aba Ativa
     const [activeTab, setActiveTab] = useState(myData?.group || groups[0] || 'GERAL')
 
     useEffect(() => {
         if (myData?.group) setActiveTab(myData.group)
     }, [myData?.group])
 
-    // Filtra a lista
     const filteredParticipants = hasGroups
         ? participants.filter((p: any) => p.group === activeTab)
         : participants
 
-    // --- ORDENAÇÃO ---
+    // --- ORDENAÇÃO CORRIGIDA (CRITÉRIOS FIFA) ---
     const sorted = [...filteredParticipants].sort((a: any, b: any) => {
+        // 1. PONTOS
         const pointsA = hasGroups ? (a.groupPoints || 0) : a.points
         const pointsB = hasGroups ? (b.groupPoints || 0) : b.points
-
         if (pointsB !== pointsA) return pointsB - pointsA
 
+        // 2. VITÓRIAS
         const winsA = hasGroups ? (a.groupWins || 0) : (a.wins || 0)
         const winsB = hasGroups ? (b.groupWins || 0) : (b.wins || 0)
         if (winsB !== winsA) return winsB - winsA
 
+        // 3. SALDO DE GOLS (SG) - Faltava isso!
+        const sgA = hasGroups ? (a.groupSG || 0) : (a.goalDifference || 0)
+        const sgB = hasGroups ? (b.groupSG || 0) : (b.goalDifference || 0)
+        if (sgB !== sgA) return sgB - sgA
+
+        // 4. GOLS PRÓ (GP)
+        const gfA = hasGroups ? (a.groupGF || 0) : (a.goalsScored || 0)
+        const gfB = hasGroups ? (b.groupGF || 0) : (b.goalsScored || 0)
+        if (gfB !== gfA) return gfB - gfA
+
+        // 5. CRAVADAS (Desempate final)
         const exactA = a.exactScores || 0
         const exactB = b.exactScores || 0
         if (exactB !== exactA) return exactB - exactA
 
+        // 6. ORDEM ALFABÉTICA
         return (a.teamName || a.user.name || "").localeCompare(b.teamName || b.user.name || "")
     })
 
@@ -132,7 +148,10 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                 <div className="flex-1 text-left pl-2">Clube / Treinador</div>
                 <div className="flex items-center gap-0 md:gap-2 text-center">
                     <div className="w-8 md:w-10 text-white font-black">PTS</div>
-                    <div className="w-8 md:w-10 text-gray-400" title="Cravadas">CRAV</div>
+                    {/* Alterei de CRAV para SG se for grupo, pois é o critério principal visual */}
+                    <div className="w-8 md:w-10 text-gray-400" title={hasGroups ? "Saldo de Gols" : "Cravadas"}>
+                        {hasGroups ? "SG" : "CRAV"}
+                    </div>
                 </div>
             </div>
 
@@ -144,6 +163,7 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                     sorted.map((p: any, index: number) => {
                         const pos = index + 1
                         const points = hasGroups ? (p.groupPoints || 0) : p.points
+                        const sg = hasGroups ? (p.groupSG || 0) : (p.goalDifference || 0)
 
                         const isBestCampaign = points === maxPointsCurrentTab && points > 0
                         const isMe = p.userId === currentUserId
@@ -209,7 +229,14 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
 
                                 <div className="flex items-center gap-0 md:gap-2 text-center text-xs font-mono">
                                     <div className="w-8 md:w-10 font-black text-white text-sm">{points}</div>
-                                    <div className="w-8 md:w-10 text-gray-500 font-bold">{p.exactScores || 0}</div>
+
+                                    {/* Mostra SG se for grupo, ou Cravadas se for liga */}
+                                    <div className={`w-8 md:w-10 font-bold ${sg > 0 ? 'text-emerald-500' : sg < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                        {hasGroups
+                                            ? (sg > 0 ? `+${sg}` : sg)
+                                            : (p.exactScores || 0)
+                                        }
+                                    </div>
                                 </div>
                             </button>
                         )
@@ -217,7 +244,7 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                 )}
             </div>
 
-            {/* --- MODAL --- */}
+            {/* --- MODAL (Mantido igual) --- */}
             {selectedParticipant && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelectedParticipant(null)}>
                     <div className="bg-[#121212] w-full max-w-md rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
