@@ -10,15 +10,7 @@ export default async function ClassificacaoPage({ params }: { params: Promise<{ 
         where: { slug },
         include: {
             participants: {
-                include: { user: true },
-                // Ordena primeiro por GRUPO, depois pelos critérios de desempate
-                orderBy: [
-                    { group: 'asc' },
-                    { groupPoints: 'desc' },
-                    { groupWins: 'desc' },
-                    { groupSG: 'desc' },
-                    { groupGF: 'desc' }
-                ]
+                include: { user: true }
             }
         }
     })
@@ -35,6 +27,11 @@ export default async function ClassificacaoPage({ params }: { params: Promise<{ 
 
     const groupNames = Object.keys(groupedParticipants).sort()
     const isGroupStage = groupNames.length > 1 && groupNames[0] !== "GERAL"
+
+    // --- CONFIGURAÇÃO DO GRID RESPONSIVO ---
+    // MOBILE: Colunas estreitas (20px) para caber na telinha.
+    // DESKTOP (md:): Colunas largas (40px-50px) para ficar bonito no monitor.
+    const gridCols = "grid-cols-[20px_1fr_28px_20px_20px_20px_20px_20px_20px_26px] md:grid-cols-[40px_1fr_50px_40px_40px_40px_40px_40px_40px_40px]"
 
     return (
         <div className="min-h-screen bg-[#101010] text-gray-100 font-sans pb-20">
@@ -56,132 +53,141 @@ export default async function ClassificacaoPage({ params }: { params: Promise<{ 
                     </div>
                 </div>
 
-                {/* --- LAYOUT DE GRUPOS (SE TIVER GRUPOS) --- */}
+                {/* --- LAYOUT DE GRUPOS --- */}
                 {isGroupStage ? (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {groupNames.map((groupName) => (
-                            <div key={groupName} className="bg-[#181818] rounded-xl overflow-hidden shadow-lg border border-white/5">
-                                {/* HEADER DO GRUPO */}
-                                <div className="bg-[#202020] px-3 py-3 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <h3 className="text-white font-black uppercase tracking-widest text-sm flex items-center gap-2">
-                                        <span className="bg-emerald-500 text-black w-6 h-6 flex items-center justify-center rounded text-xs font-bold">
-                                            {groupName}
-                                        </span>
-                                        GRUPO {groupName}
-                                    </h3>
+                        {groupNames.map((groupName) => {
+                            // Ordenação
+                            const sortedPlayers = groupedParticipants[groupName].sort((a: any, b: any) => {
+                                if (b.groupPoints !== a.groupPoints) return b.groupPoints - a.groupPoints
+                                if (b.groupWins !== a.groupWins) return b.groupWins - a.groupWins
+                                if (b.groupSG !== a.groupSG) return b.groupSG - a.groupSG
+                                if (b.groupGF !== a.groupGF) return b.groupGF - a.groupGF
+                                return a.teamName.localeCompare(b.teamName)
+                            })
 
-                                    {/* LEGENDA COMPLETA */}
-                                    <div className="flex items-center gap-2 text-[9px] md:text-[10px] text-gray-500 font-bold font-mono uppercase tracking-wider overflow-x-auto">
-                                        <span className="w-6 text-center text-white">PTS</span>
-                                        <span className="w-5 text-center">J</span>
-                                        <span className="w-5 text-center">V</span>
-                                        <span className="w-5 text-center">E</span>
-                                        <span className="w-5 text-center">D</span>
-                                        <span className="w-5 text-center text-gray-400">GP</span>
-                                        <span className="w-5 text-center text-gray-400">GC</span>
-                                        <span className="w-6 text-center text-gray-300">SG</span>
+                            return (
+                                <div key={groupName} className="bg-[#181818] rounded-xl overflow-hidden shadow-lg border border-white/5">
+
+                                    {/* HEADER DO GRUPO */}
+                                    <div className="bg-[#202020] px-3 py-3 border-b border-white/5 flex items-center gap-3">
+                                        <div className={`w-6 h-6 flex items-center justify-center rounded text-xs font-black text-black shadow-lg
+                                            ${groupName === 'A' ? 'bg-emerald-500' :
+                                            groupName === 'B' ? 'bg-blue-500' :
+                                                groupName === 'C' ? 'bg-indigo-500' :
+                                                    groupName === 'D' ? 'bg-purple-500' : 'bg-gray-500'}`}>
+                                            {groupName}
+                                        </div>
+                                        <h3 className="text-white font-black uppercase tracking-widest text-sm">
+                                            GRUPO {groupName}
+                                        </h3>
+                                    </div>
+
+                                    {/* --- TABELA --- */}
+                                    <div className="w-full overflow-x-auto no-scrollbar">
+                                        <div className="min-w-[320px]">
+
+                                            {/* CABEÇALHO DA TABELA */}
+                                            <div className={`grid ${gridCols} gap-1 px-2 py-2 bg-[#1a1a1a] border-b border-white/5 text-[9px] md:text-[10px] text-gray-500 font-bold uppercase text-center items-center`}>
+                                                <div>#</div>
+                                                <div className="text-left pl-1">Clube</div>
+                                                <div className="text-white">PTS</div>
+                                                <div>J</div>
+                                                <div>V</div>
+                                                <div>E</div>
+                                                <div>D</div>
+                                                <div>GP</div>
+                                                <div>GC</div>
+                                                <div>SG</div>
+                                            </div>
+
+                                            {/* LINHAS */}
+                                            <div className="divide-y divide-white/5 text-[10px] md:text-xs">
+                                                {sortedPlayers.map((p: any, index: number) => {
+                                                    const pos = index + 1
+                                                    const isClassified = pos <= 2
+                                                    const borderClass = isClassified ? "border-l-[3px] border-emerald-500 bg-emerald-500/5" : "border-l-[3px] border-transparent"
+
+                                                    return (
+                                                        <div key={p.id} className={`grid ${gridCols} gap-1 px-2 py-3 items-center text-center transition-colors hover:bg-white/5 ${borderClass}`}>
+
+                                                            {/* POSIÇÃO */}
+                                                            <div className={`font-black ${isClassified ? 'text-emerald-500' : 'text-gray-600'}`}>
+                                                                {pos}º
+                                                            </div>
+
+                                                            {/* TIME + USER */}
+                                                            <div className="text-left pl-1 flex flex-col justify-center min-w-0">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    {p.teamLogo && <img src={p.teamLogo} className="w-4 h-4 md:w-5 md:h-5 object-contain" />}
+                                                                    <span className="font-bold text-gray-200 truncate leading-tight">{p.teamName}</span>
+                                                                </div>
+                                                                <span className="text-[8px] md:text-[9px] font-bold text-gray-500 uppercase truncate max-w-[80px] md:max-w-none">
+                                                                    {p.user?.name?.split(' ')[0]}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* DADOS (USANDO GROUP) */}
+                                                            <div className="font-black text-white text-xs md:text-sm bg-white/5 rounded py-0.5">{p.groupPoints || 0}</div>
+                                                            <div className="text-gray-400">{p.groupPlayed || 0}</div>
+                                                            <div className="text-gray-400">{p.groupWins || 0}</div>
+                                                            <div className="text-gray-500">{p.groupDraws || 0}</div>
+                                                            <div className="text-gray-500">{p.groupLosses || 0}</div>
+                                                            <div className="text-gray-500">{p.groupGF || 0}</div>
+                                                            <div className="text-gray-500">{p.groupGC || 0}</div>
+
+                                                            <div className={`font-bold ${(p.groupSG || 0) > 0 ? 'text-emerald-500' : (p.groupSG || 0) < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                                                {p.groupSG || 0}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-
-                                {/* LISTA DO GRUPO */}
-                                <div className="divide-y divide-white/5">
-                                    {groupedParticipants[groupName].map((p: any, index: number) => {
-                                        const pos = index + 1
-                                        // 2 Primeiros passam (Verde)
-                                        const isClassified = pos <= 2
-                                        const borderClass = isClassified ? "border-l-[3px] border-emerald-500 bg-emerald-500/5" : "border-l-[3px] border-transparent"
-
-                                        return (
-                                            <div key={p.id} className={`flex items-center justify-between px-3 py-3 transition-colors hover:bg-white/5 ${borderClass}`}>
-
-                                                {/* TIME + INFO */}
-                                                <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
-                                                    <span className={`text-xs font-bold w-4 text-center ${isClassified ? 'text-emerald-500' : 'text-gray-600'}`}>
-                                                        {pos}
-                                                    </span>
-                                                    <div className="w-8 h-8 flex-shrink-0">
-                                                        {p.teamLogo ? (
-                                                            <img src={p.teamLogo} className="w-full h-full object-contain" />
-                                                        ) : (
-                                                            <div className="w-full h-full rounded-full bg-gray-800 flex items-center justify-center text-[10px] text-gray-500 font-bold">
-                                                                {p.teamName.charAt(0)}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex flex-col truncate">
-                                                        <span className="text-sm font-bold text-gray-200 truncate leading-tight">{p.teamName}</span>
-                                                        <span className="text-[9px] font-bold text-gray-600 uppercase truncate">{p.user?.name}</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* ESTATÍSTICAS COMPLETAS (USANDO DADOS DE GRUPO) */}
-                                                <div className="flex items-center gap-2 text-[10px] md:text-xs font-mono font-bold text-gray-500">
-                                                    {/* PTS */}
-                                                    <span className="w-6 text-center text-white font-black text-sm">{p.groupPoints}</span>
-                                                    {/* J */}
-                                                    <span className="w-5 text-center text-gray-400">{p.groupPlayed}</span>
-                                                    {/* V */}
-                                                    <span className="w-5 text-center">{p.groupWins}</span>
-                                                    {/* E */}
-                                                    <span className="w-5 text-center">{p.groupDraws}</span>
-                                                    {/* D */}
-                                                    <span className="w-5 text-center">{p.groupLosses}</span>
-                                                    {/* GP */}
-                                                    <span className="w-5 text-center hidden sm:block">{p.groupGF}</span>
-                                                    {/* GC */}
-                                                    <span className="w-5 text-center hidden sm:block">{p.groupGC}</span>
-                                                    {/* SG */}
-                                                    <span className={`w-6 text-center ${p.groupSG > 0 ? 'text-emerald-500' : p.groupSG < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                                                        {p.groupSG > 0 ? `+${p.groupSG}` : p.groupSG}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                 ) : (
-                    /* --- LAYOUT DE LIGA ÚNICA (SEM GRUPOS) --- */
-                    <div className="bg-[#181818] rounded-lg overflow-hidden shadow-2xl border border-white/5">
-                        <div className="overflow-x-auto">
-                            <div className="min-w-[700px]">
-                                <div className="flex items-center p-3 bg-[#202020] border-b border-white/5 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                                    <div className="w-10 text-center">#</div>
-                                    <div className="flex-1 text-left pl-2">Clube</div>
-                                    <div className="w-10 text-center text-white">PTS</div>
-                                    <div className="w-10 text-center">J</div>
-                                    <div className="w-10 text-center">V</div>
-                                    <div className="w-10 text-center">E</div>
-                                    <div className="w-10 text-center">D</div>
-                                    <div className="w-10 text-center">GP</div>
-                                    <div className="w-10 text-center">GC</div>
-                                    <div className="w-10 text-center">SG</div>
+                    /* --- LAYOUT DE LIGA ÚNICA (GERAL) --- */
+                    <div className="bg-[#181818] rounded-xl overflow-hidden shadow-lg border border-white/5">
+                        <div className="w-full overflow-x-auto">
+                            <div className="min-w-[600px]">
+                                <div className={`grid ${gridCols} gap-1 px-3 py-3 bg-[#202020] border-b border-white/5 text-[10px] md:text-[11px] text-gray-500 font-bold uppercase text-center items-center`}>
+                                    <div>#</div>
+                                    <div className="text-left pl-2">Clube</div>
+                                    <div className="text-white">PTS</div>
+                                    <div>J</div>
+                                    <div>V</div>
+                                    <div>E</div>
+                                    <div>D</div>
+                                    <div>GP</div>
+                                    <div>GC</div>
+                                    <div>SG</div>
                                 </div>
-                                <div className="divide-y divide-white/5">
-                                    {groupedParticipants["GERAL"]?.map((p: any, index: number) => {
+                                <div className="divide-y divide-white/5 text-xs md:text-sm">
+                                    {groupedParticipants["GERAL"]?.sort((a: any, b: any) => b.points - a.points || b.wins - a.wins || b.goalDifference - a.goalDifference).map((p: any, index: number) => {
                                         const pos = index + 1
                                         return (
-                                            <div key={p.id} className="flex items-center py-3 px-3 hover:bg-white/5 transition-colors">
-                                                <div className="w-10 text-center font-black text-sm text-gray-500">{pos}</div>
-                                                <div className="flex-1 flex items-center gap-3 pl-2">
-                                                    {p.teamLogo ? <img src={p.teamLogo} className="w-8 h-8 object-contain" /> : <div className="w-8 h-8 bg-gray-800 rounded-full"/>}
+                                            <div key={p.id} className={`grid ${gridCols} gap-1 px-3 py-3 items-center text-center transition-colors hover:bg-white/5`}>
+                                                <div className="font-black text-gray-500">{pos}º</div>
+                                                <div className="text-left pl-2 flex items-center gap-2">
+                                                    {p.teamLogo ? <img src={p.teamLogo} className="w-5 h-5 md:w-6 md:h-6 object-contain" /> : <div className="w-5 h-5 bg-gray-800 rounded-full"/>}
                                                     <div>
-                                                        <p className="text-sm font-bold text-gray-200">{p.teamName}</p>
-                                                        <p className="text-[10px] text-gray-500 uppercase">{p.user?.name}</p>
+                                                        <p className="font-bold text-gray-200">{p.teamName}</p>
+                                                        <p className="text-[9px] md:text-[10px] text-gray-500 uppercase">{p.user?.name}</p>
                                                     </div>
                                                 </div>
-                                                {/* ESTATÍSTICAS GERAIS */}
-                                                <div className="w-10 text-center font-black text-white">{p.points}</div>
-                                                <div className="w-10 text-center text-xs text-gray-500">{p.matchesPlayed}</div>
-                                                <div className="w-10 text-center text-xs text-gray-500">{p.wins}</div>
-                                                <div className="w-10 text-center text-xs text-gray-500">{p.draws}</div>
-                                                <div className="w-10 text-center text-xs text-gray-500">{p.losses}</div>
-                                                <div className="w-10 text-center text-xs text-gray-500">{p.goalsScored}</div>
-                                                <div className="w-10 text-center text-xs text-gray-500">{p.goalsConceded}</div>
-                                                <div className={`w-10 text-center text-xs font-bold ${p.goalDifference > 0 ? 'text-emerald-500' : p.goalDifference < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                                                    {p.goalDifference > 0 ? `+${p.goalDifference}` : p.goalDifference}
+                                                <div className="font-black text-white bg-white/5 rounded py-0.5">{p.points}</div>
+                                                <div className="text-gray-400">{p.matchesPlayed}</div>
+                                                <div className="text-gray-400">{p.wins}</div>
+                                                <div className="text-gray-500">{p.draws}</div>
+                                                <div className="text-gray-500">{p.losses}</div>
+                                                <div className="text-gray-500">{p.goalsScored}</div>
+                                                <div className="text-gray-500">{p.goalsConceded}</div>
+                                                <div className={`font-bold ${p.goalDifference > 0 ? 'text-emerald-500' : p.goalDifference < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                                    {p.goalDifference}
                                                 </div>
                                             </div>
                                         )
@@ -192,15 +198,16 @@ export default async function ClassificacaoPage({ params }: { params: Promise<{ 
                     </div>
                 )}
 
-                {/* LEGENDA NO RODAPÉ */}
+                {/* LEGENDA */}
                 <div className="mt-6 flex flex-wrap items-center gap-6 text-[10px] font-bold uppercase tracking-wider text-gray-500 border-t border-white/5 pt-4 px-2">
                     <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></span> Zona de Classificação (Mata-Mata)
+                        <span className="w-2 h-2 rounded bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></span> Zona de Classificação
                     </div>
                     <div className="ml-auto flex gap-4 opacity-50">
-                        <span>GP: Gols Pró</span>
-                        <span>GC: Gols Contra</span>
-                        <span>SG: Saldo de Gols</span>
+                        <span>PTS: Pontos</span>
+                        <span>J: Jogos</span>
+                        <span>V: Vitórias</span>
+                        <span>SG: Saldo</span>
                     </div>
                 </div>
 

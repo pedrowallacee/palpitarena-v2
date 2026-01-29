@@ -1,118 +1,126 @@
-import { prisma } from "@/lib/prisma"
+'use client'
+
+import { Trophy } from "lucide-react"
 
 interface GroupsViewerProps {
-    championshipId: string
+    participants: any[]
 }
 
-export async function GroupsViewer({ championshipId }: GroupsViewerProps) {
-    // 1. Busca participantes JÁ FILTRANDO quem tem grupo
-    // E ordena pelos critérios da Fase de Grupos (não do ranking geral)
-    const participants = await prisma.championshipParticipant.findMany({
-        where: {
-            championshipId,
-            group: { not: null } // Só traz quem tem grupo definido
-        },
-        orderBy: [
-            { groupPoints: 'desc' },  // 1º Pontos no Grupo
-            { groupWins: 'desc' },    // 2º Vitórias no Grupo
-            { groupSG: 'desc' },      // 3º Saldo de Gols no Grupo
-            { groupGF: 'desc' }       // 4º Gols Pró no Grupo
-        ]
-    })
+export function GroupsViewer({ participants }: GroupsViewerProps) {
+    // 1. Agrupar participantes por Grupo (A, B, C, D...)
+    const groups: Record<string, any[]> = {}
 
-    // 2. Agrupa por Letra (A, B, C...)
-    const groups: Record<string, typeof participants> = {}
-
+    // Filtra e agrupa
     participants.forEach(p => {
         if (!p.group) return
         if (!groups[p.group]) groups[p.group] = []
         groups[p.group].push(p)
     })
 
-    // 3. Ordena as chaves (A, B, C...)
-    const sortedGroupNames = Object.keys(groups).sort()
+    // Ordena as chaves dos grupos (A, B, C...)
+    const groupNames = Object.keys(groups).sort()
 
-    if (sortedGroupNames.length === 0) {
+    if (groupNames.length === 0) {
         return (
-            <div className="p-12 text-center border border-dashed border-white/10 rounded-xl bg-white/5 animate-in fade-in">
+            <div className="p-12 text-center border border-dashed border-white/10 rounded-xl bg-white/5">
                 <p className="text-gray-400 font-bold mb-2">A Fase de Grupos ainda não começou.</p>
-                <p className="text-xs text-gray-600">Aguarde o administrador realizar o sorteio.</p>
+                <p className="text-xs text-gray-600">Aguarde o sorteio dos grupos.</p>
             </div>
         )
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in slide-in-from-bottom-4">
-            {sortedGroupNames.map(groupName => (
-                <div key={groupName} className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-lg flex flex-col">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20">
+            {groupNames.map(groupName => {
+                // Ordenação FIFA: Pontos > Vitórias > SG > GP > Ordem Alfabética
+                const players = groups[groupName].sort((a, b) => {
+                    if (b.groupPoints !== a.groupPoints) return b.groupPoints - a.groupPoints
+                    if (b.groupWins !== a.groupWins) return b.groupWins - a.groupWins
+                    if (b.groupSG !== a.groupSG) return b.groupSG - a.groupSG
+                    if (b.groupGF !== a.groupGF) return b.groupGF - a.groupGF
+                    return a.teamName.localeCompare(b.teamName)
+                })
 
-                    {/* CABEÇALHO DO GRUPO */}
-                    <div className="bg-gradient-to-r from-[#1a1a1a] to-[#222] p-3 border-b border-white/5 flex justify-between items-center">
-                        <h3 className="text-white font-black font-teko uppercase text-xl tracking-wide flex items-center gap-2">
-                            <span className="bg-emerald-500 text-black w-6 h-6 flex items-center justify-center rounded text-sm font-bold">
+                return (
+                    <div key={groupName} className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-lg flex flex-col">
+
+                        {/* CABEÇALHO DO GRUPO */}
+                        <div className="flex items-center gap-3 bg-[#1a1a1a] p-3 border-b border-white/5">
+                            <div className={`w-6 h-6 rounded flex items-center justify-center font-black text-xs text-black shadow-lg
+                                ${groupName === 'A' ? 'bg-emerald-500' :
+                                groupName === 'B' ? 'bg-blue-500' :
+                                    groupName === 'C' ? 'bg-indigo-500' :
+                                        groupName === 'D' ? 'bg-purple-500' : 'bg-gray-500'}`}>
                                 {groupName}
-                            </span>
-                            Grupo {groupName}
-                        </h3>
+                            </div>
+                            <h3 className="font-black uppercase text-white tracking-widest text-sm">GRUPO {groupName}</h3>
+                        </div>
 
-                        {/* LEGENDA DAS COLUNAS (Fica alinhada com as colunas de baixo) */}
-                        <div className="flex gap-0 text-[10px] text-gray-500 font-bold font-mono">
-                            <div className="w-8 text-center" title="Pontos">PTS</div>
-                            <div className="w-8 text-center" title="Jogos">J</div>
-                            <div className="w-8 text-center hidden sm:block" title="Vitórias">V</div>
-                            <div className="w-8 text-center hidden sm:block" title="Empates">E</div>
-                            <div className="w-8 text-center hidden sm:block" title="Derrotas">D</div>
-                            <div className="w-8 text-center" title="Saldo">SG</div>
+                        {/* --- TABELA (GRID FIXO) --- */}
+                        {/* Define larguras exatas para alinhar cabeçalho e dados perfeitamente */}
+                        <div className="w-full text-[10px] md:text-xs">
+
+                            {/* LINHA DE TÍTULOS */}
+                            <div className="grid grid-cols-[20px_1fr_28px_20px_20px_20px_20px_20px_20px_24px] gap-1 px-2 py-2 bg-[#161616] text-gray-500 font-bold uppercase text-center border-b border-white/5 items-center">
+                                <div>#</div>
+                                <div className="text-left pl-1">Clube</div>
+                                <div className="text-white">PTS</div>
+                                <div>J</div>
+                                <div>V</div>
+                                <div>E</div>
+                                <div>D</div>
+                                <div className="hidden sm:block">GP</div>
+                                <div className="hidden sm:block">GC</div>
+                                <div>SG</div>
+                            </div>
+
+                            {/* LINHAS DOS TIMES */}
+                            <div className="divide-y divide-white/5">
+                                {players.map((p, index) => {
+                                    const pos = index + 1
+                                    const isClassified = pos <= 2 // Top 2 verde
+
+                                    return (
+                                        <div key={p.id} className={`grid grid-cols-[20px_1fr_28px_20px_20px_20px_20px_20px_20px_24px] gap-1 px-2 py-3 items-center text-center transition-colors hover:bg-white/5 
+                                            ${isClassified ? 'border-l-2 border-emerald-500 bg-emerald-500/5' : 'border-l-2 border-transparent'}`}>
+
+                                            {/* Posição */}
+                                            <div className={`font-black ${isClassified ? 'text-emerald-500' : 'text-gray-600'}`}>
+                                                {pos}º
+                                            </div>
+
+                                            {/* Time */}
+                                            <div className="text-left pl-1 flex flex-col justify-center min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                    {p.teamLogo && <img src={p.teamLogo} className="w-4 h-4 object-contain" />}
+                                                    <span className="font-bold text-gray-200 truncate">{p.teamName}</span>
+                                                </div>
+                                                <span className="text-[8px] text-gray-500 font-bold uppercase truncate max-w-[80px] sm:max-w-none">
+                                                    {p.user?.name?.split(' ')[0]}
+                                                </span>
+                                            </div>
+
+                                            {/* ESTATÍSTICAS (Alinhadas pelo Grid) */}
+                                            <div className="font-black text-white text-xs bg-white/5 rounded py-0.5">{p.groupPoints || 0}</div>
+                                            <div className="text-gray-400">{p.groupPlayed || 0}</div>
+                                            <div className="text-gray-400">{p.groupWins || 0}</div>
+                                            <div className="text-gray-500">{p.groupDraws || 0}</div>
+                                            <div className="text-gray-500">{p.groupLosses || 0}</div>
+
+                                            <div className="text-gray-500 hidden sm:block">{p.groupGF || 0}</div>
+                                            <div className="text-gray-500 hidden sm:block">{p.groupGC || 0}</div>
+
+                                            <div className={`font-bold ${(p.groupSG || 0) > 0 ? 'text-emerald-500' : (p.groupSG || 0) < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                                                {p.groupSG || 0}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
                         </div>
                     </div>
-
-                    {/* TABELA */}
-                    <div className="divide-y divide-white/5 bg-[#0a0a0a]">
-                        {groups[groupName].map((participant, index) => {
-                            // Regra de Classificação: Os 2 primeiros ficam verdes
-                            const isQualified = index < 2
-
-                            return (
-                                <div key={participant.id} className={`flex items-center justify-between p-3 hover:bg-white/5 transition-colors ${isQualified ? 'bg-emerald-500/5 border-l-2 border-emerald-500' : 'border-l-2 border-transparent'}`}>
-
-                                    {/* LADO ESQUERDO: POSIÇÃO + TIME */}
-                                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                                        <span className={`w-4 text-center text-xs font-bold font-mono ${isQualified ? 'text-emerald-500' : 'text-gray-600'}`}>
-                                            {index + 1}
-                                        </span>
-
-                                        <div className="w-8 h-8 rounded-full bg-gray-800 flex-shrink-0 flex items-center justify-center overflow-hidden border border-white/10">
-                                            {participant.teamLogo ? (
-                                                <img src={participant.teamLogo} className="w-full h-full object-contain" />
-                                            ) : (
-                                                <span className="text-[10px] font-bold text-gray-500">{participant.teamName.charAt(0)}</span>
-                                            )}
-                                        </div>
-
-                                        <span className="truncate text-xs md:text-sm font-bold text-gray-200">
-                                            {participant.teamName}
-                                        </span>
-                                    </div>
-
-                                    {/* LADO DIREITO: ESTATÍSTICAS (Usa os campos 'group...') */}
-                                    <div className="flex gap-0 text-xs font-mono font-bold text-gray-400">
-                                        <div className="w-8 text-center text-white font-black bg-white/5 rounded mx-0.5 flex items-center justify-center">
-                                            {participant.groupPoints}
-                                        </div>
-                                        <div className="w-8 text-center flex items-center justify-center">{participant.groupPlayed}</div>
-                                        <div className="w-8 text-center hidden sm:flex items-center justify-center">{participant.groupWins}</div>
-                                        <div className="w-8 text-center hidden sm:flex items-center justify-center">{participant.groupDraws}</div>
-                                        <div className="w-8 text-center hidden sm:flex items-center justify-center">{participant.groupLosses}</div>
-                                        <div className="w-8 text-center flex items-center justify-center text-gray-500">
-                                            {participant.groupSG > 0 ? `+${participant.groupSG}` : participant.groupSG}
-                                        </div>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
-                </div>
-            ))}
+                )
+            })}
         </div>
     )
 }
