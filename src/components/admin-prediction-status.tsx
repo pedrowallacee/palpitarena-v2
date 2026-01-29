@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from "react"
+import { Copy, Check, Users, ShieldAlert } from "lucide-react"
 
 interface AdminPredictionStatusProps {
     participants: any[]
@@ -8,103 +9,106 @@ interface AdminPredictionStatusProps {
 }
 
 export function AdminPredictionStatus({ participants, round }: AdminPredictionStatusProps) {
-    const [isOpen, setIsOpen] = useState(false)
     const [copied, setCopied] = useState(false)
 
-    const totalMatches = round.matches.length
+    // Filtra quem NÃO palpitou ainda (quem não tem palpites na rodada)
+    // Regra: Considera que palpitou se tiver pelo menos 1 palpite registrado na rodada
+    const missingParticipants = participants.filter(p => {
+        // Se o usuário não existe (time sem dono), ignora
+        if (!p.user) return false;
 
-    // Processa os dados para saber o status de cada um
-    const statusList = participants.map(p => {
-        // Conta quantos palpites esse usuário tem nos jogos desta rodada
-        const predictionsCount = round.matches.reduce((acc: number, match: any) => {
-            const hasPrediction = match.predictions.some((pred: any) => pred.userId === p.userId)
-            return acc + (hasPrediction ? 1 : 0)
-        }, 0)
+        // Verifica se existe algum palpite desse usuário NOS JOGOS DA RODADA
+        const hasPredicted = round.matches.some((m: any) =>
+            m.predictions.some((pred: any) => pred.userId === p.userId)
+        )
 
-        return {
-            name: p.user.name || "Sem Nome",
-            count: predictionsCount,
-            isComplete: predictionsCount === totalMatches,
-            isMissing: predictionsCount === 0
-        }
+        return !hasPredicted
     })
 
-    // Separa os pendentes para gerar o texto
-    const missingPeople = statusList.filter(p => !p.isComplete)
+    const missingNames = missingParticipants.map(p => p.user.name || p.teamName)
 
-    function handleCopyList() {
-        const header = `📢 *FALTA PALPITAR NA ${round.name.toUpperCase()}!* 📢\n\n`
-        const list = missingPeople.map(p => {
-            if (p.count === 0) return `- ${p.name} (Falta tudo ❌)`
-            return `- ${p.name} (Faltam ${totalMatches - p.count} jogos ⚠️)`
-        }).join("\n")
+    const handleCopyMissing = () => {
+        const link = `https://palpitarena-v2.vercel.app/campeonatos/${round.championship.slug}/rodada/${round.id}`
 
-        const footer = `\n\nCorre lá: https://palpitarena.com/` // Troque pelo seu domínio se quiser
+        const text = `
+🚨 *ATENÇÃO TREINADORES!* 🚨
+🏆 *${round.championship.name}*
+📅 *${round.name}*
 
-        const fullText = header + list + footer
+⏳ *O MERCADO FECHA EM BREVE!*
+Não deixe para a última hora, evite o W.O.
 
-        navigator.clipboard.writeText(fullText)
+👇 *Ainda não palpitaram:*
+${missingNames.map(n => `❌ ${n}`).join("\n")}
+
+🔗 *FAÇA SEU JOGO AGORA:*
+${link}
+`
+        navigator.clipboard.writeText(text.trim())
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }
 
+    if (missingParticipants.length === 0) {
+        return (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-3">
+                <div className="bg-emerald-500 text-black p-2 rounded-full">
+                    <Check className="w-4 h-4" />
+                </div>
+                <div>
+                    <h3 className="text-emerald-400 font-bold uppercase text-sm">Tudo Pronto!</h3>
+                    <p className="text-xs text-gray-400">Todos os treinadores já enviaram seus palpites.</p>
+                </div>
+            </div>
+        )
+    }
+
     return (
-        <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden mb-8">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors"
-            >
-                <div className="flex items-center gap-3">
-                    <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500">
-                        👮‍♂️
-                    </div>
-                    <div className="text-left">
-                        <h3 className="text-sm font-bold text-white uppercase">Controle de Palpites</h3>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase">
-                            {missingPeople.length} pendentes de {participants.length} treinadores
+        <div className="bg-[#181818] border border-white/5 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-orange-500" />
+                    <div>
+                        <h3 className="text-white font-bold uppercase text-sm">Faltam Palpitar</h3>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">
+                            {missingParticipants.length} Treinadores Pendentes
                         </p>
                     </div>
                 </div>
-                <span className={`text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}>▼</span>
-            </button>
 
-            {isOpen && (
-                <div className="p-4 border-t border-white/5 bg-[#0a0a0a]">
-
-                    {/* Botão de Copiar */}
-                    {missingPeople.length > 0 && (
-                        <button
-                            onClick={handleCopyList}
-                            className="w-full mb-4 bg-green-600 hover:bg-green-500 text-white font-bold uppercase text-[10px] py-3 rounded-lg flex items-center justify-center gap-2 transition-all active:scale-95"
-                        >
-                            {copied ? "✅ Lista Copiada!" : "📋 Copiar Lista de Cobrança (WhatsApp)"}
-                        </button>
+                <button
+                    onClick={handleCopyMissing}
+                    className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 rounded-lg transition-all active:scale-95 group"
+                >
+                    {copied ? (
+                        <>
+                            <Check className="w-4 h-4 text-emerald-500" />
+                            <span className="text-[10px] font-bold text-emerald-500 uppercase">Copiado</span>
+                        </>
+                    ) : (
+                        <>
+                            <Copy className="w-4 h-4 text-gray-400 group-hover:text-white" />
+                            <span className="text-[10px] font-bold text-gray-400 group-hover:text-white uppercase">Copiar Lista</span>
+                        </>
                     )}
+                </button>
+            </div>
 
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                        {statusList.sort((a, b) => a.count - b.count).map((status, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-2 rounded border border-white/5 bg-white/5">
-                                <span className="text-xs font-bold text-gray-300 truncate max-w-[150px]">
-                                    {status.name}
-                                </span>
-
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-mono text-gray-500">
-                                        {status.count}/{totalMatches}
-                                    </span>
-                                    {status.isComplete ? (
-                                        <span className="text-emerald-500 text-xs" title="Completo">✅</span>
-                                    ) : status.isMissing ? (
-                                        <span className="text-red-500 text-xs" title="Não palpitou nada">❌</span>
-                                    ) : (
-                                        <span className="text-yellow-500 text-xs" title="Incompleto">⚠️</span>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+            {/* Lista Visual (Scroll Horizontal se for muito grande) */}
+            <div className="flex flex-wrap gap-2">
+                {missingParticipants.map(p => (
+                    <div key={p.id} className="flex items-center gap-2 bg-black/40 border border-white/5 px-2 py-1 rounded-full pr-3">
+                        <div className="w-5 h-5 rounded-full bg-gray-800 flex items-center justify-center overflow-hidden">
+                            {p.teamLogo ? (
+                                <img src={p.teamLogo} className="w-full h-full object-contain" />
+                            ) : (
+                                <span className="text-[8px] font-bold text-gray-500">{p.teamName?.charAt(0)}</span>
+                            )}
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">{p.user?.name.split(" ")[0]}</span>
                     </div>
-                </div>
-            )}
+                ))}
+            </div>
         </div>
     )
 }
