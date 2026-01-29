@@ -6,9 +6,8 @@ import { InternalNavbar } from "@/components/internal-navbar"
 import { Leaderboard } from "@/components/leaderboard"
 import { InviteButton } from "@/components/invite-button"
 import { RoundListItem } from "@/components/round-list-item"
-// --- ADICIONADO: ---
 import { DuelBanner } from "@/components/duel-banner"
-import { Swords } from "lucide-react"
+import { Swords, ArrowRight, Trophy } from "lucide-react"
 
 export default async function CampeonatoPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
@@ -83,7 +82,7 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
         <div className="min-h-screen bg-[#050505] text-white pb-20 font-sans selection:bg-emerald-500 selection:text-black">
             <InternalNavbar />
 
-            {/* HEADER (Seu visual original com blur) */}
+            {/* HEADER */}
             <div className="relative bg-[#121212] border-b border-white/10 py-10 px-4 mb-8 overflow-hidden">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-600/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -126,7 +125,7 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
                 {/* COLUNA ESQUERDA: DUELO + RODADAS */}
                 <div className="lg:col-span-2 space-y-8">
 
-                    {/* 🔥 1. BANNER DO DUELO (NOVO) 🔥 */}
+                    {/* 1. BANNER DO DUELO */}
                     {activeRoundForBanner && (
                         <div className="animate-in slide-in-from-top-4 duration-500">
                             <div className="flex items-center justify-between mb-4 px-1">
@@ -135,7 +134,6 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
                                     Seu Duelo na {activeRoundForBanner.name}
                                 </h2>
                             </div>
-                            {/* Passamos o ID da rodada ativa para buscar o rival */}
                             <DuelBanner roundId={activeRoundForBanner.id} currentUserId={userId} />
                         </div>
                     )}
@@ -178,25 +176,47 @@ export default async function CampeonatoPage({ params }: { params: Promise<{ slu
                     </div>
                 </div>
 
-                {/* COLUNA DIREITA: CLASSIFICAÇÃO */}
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-black italic font-teko uppercase flex items-center gap-2">
-                            <span className="text-yellow-500 text-3xl">🏆</span> Classificação
-                        </h2>
-                        <Link
-                            href={`/campeonatos/${slug}/classificacao`}
-                            className="text-[10px] font-bold text-gray-500 bg-white/5 hover:bg-white/10 px-3 py-1 rounded transition-colors uppercase"
-                        >
-                            Ver Geral
-                        </Link>
-                    </div>
+                {/* COLUNA DIREITA: ESTATÍSTICAS E CLASSIFICAÇÃO */}
+                <div className="space-y-6">
 
-                    <Leaderboard
-                        participants={camp.participants}
-                        currentRound={activeRoundForBanner} // Usa a mesma rodada do banner para calcular pontos ao vivo
-                        currentUserId={userId}
-                    />
+                    {/* 🔥🔥🔥 NOVO BOTÃO DE CONFRONTOS 🔥🔥🔥 */}
+                    <Link
+                        href={`/campeonatos/${slug}/confrontos`}
+                        className="w-full bg-[#181818] hover:bg-[#202020] border border-white/10 rounded-xl p-4 flex items-center justify-between group transition-all shadow-lg hover:border-emerald-500/30"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-emerald-500/10 rounded-lg group-hover:bg-emerald-500/20 transition-colors border border-emerald-500/20">
+                                <Swords className="w-5 h-5 text-emerald-500" />
+                            </div>
+                            <div>
+                                <h3 className="font-black uppercase text-white leading-none text-sm md:text-base">Resultados </h3>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase mt-1">Histórico de Confrontos</p>
+                            </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-gray-600 group-hover:text-emerald-500 transition-colors" />
+                    </Link>
+
+                    {/* CLASSIFICAÇÃO */}
+                    <div>
+                        <div className="flex items-center justify-between mb-4 px-1">
+                            <h2 className="text-xl font-black italic uppercase text-white flex items-center gap-2">
+                                <Trophy className="w-5 h-5 text-yellow-500" />
+                                Classificação
+                            </h2>
+                            <Link
+                                href={`/campeonatos/${slug}/classificacao`}
+                                className="text-[10px] font-bold text-gray-500 bg-white/5 hover:bg-white/10 px-3 py-1 rounded transition-colors uppercase"
+                            >
+                                Ver Geral
+                            </Link>
+                        </div>
+
+                        <Leaderboard
+                            participants={camp.participants}
+                            currentRound={activeRoundForBanner}
+                            currentUserId={userId}
+                        />
+                    </div>
                 </div>
             </main>
         </div>

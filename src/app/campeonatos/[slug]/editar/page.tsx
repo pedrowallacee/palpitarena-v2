@@ -4,8 +4,9 @@ import Link from "next/link"
 import { redirect, notFound } from "next/navigation"
 import { InternalNavbar } from "@/components/internal-navbar"
 import { revalidatePath } from "next/cache"
-import { ArrowLeft, Settings, ShieldAlert, Trophy, Users, UserMinus, UserPlus, Swords } from "lucide-react"
+import { ArrowLeft, Settings, ShieldAlert, Trophy, Users, UserMinus, UserPlus, Swords, Repeat } from "lucide-react"
 import { DrawButton } from "@/components/admin/draw-button"
+import { generateReturnRoundsAction } from "@/actions/generate-return-rounds"
 
 // --- AÇÕES DE SERVIDOR (Gestão de Elenco) ---
 
@@ -93,7 +94,7 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                 <div className="space-y-8">
 
                     {/* =========================================================
-                        PAINEL 1: SORTEIO FIFA (GRUPOS)
+                        PAINEL 1: SORTEIO FIFA (GRUPOS - DO ZERO)
                        ========================================================= */}
                     <section className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
                         <div className="bg-gradient-to-r from-indigo-900/40 to-[#121212] p-6 border-b border-white/5 flex items-center gap-4">
@@ -101,8 +102,8 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                                 <Trophy className="w-6 h-6 text-indigo-400" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-black uppercase text-white">Fase de Grupos</h2>
-                                <p className="text-xs text-gray-400 font-bold">Sorteio automático e Tabela de Jogos.</p>
+                                <h2 className="text-xl font-black uppercase text-white">Resetar & Sortear Grupos</h2>
+                                <p className="text-xs text-gray-400 font-bold">Cria Grupos e Rodadas do ZERO.</p>
                             </div>
                         </div>
 
@@ -111,13 +112,12 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                                 <div className="space-y-2 max-w-md">
                                     <h3 className="text-sm font-bold text-white uppercase flex items-center gap-2">
                                         <ShieldAlert className="w-4 h-4 text-yellow-500" />
-                                        Atenção ao realizar o sorteio:
+                                        Cuidado:
                                     </h3>
                                     <ul className="text-xs text-gray-500 space-y-1 list-disc pl-4 font-medium">
-                                        <li>O sistema vai embaralhar os <strong>{championship.participants.length} participantes</strong>.</li>
-                                        <li>Serão criados Grupos de 4 times (A, B, C...).</li>
-                                        <li>Serão gerados os confrontos (Rodadas) automaticamente.</li>
-                                        <li><strong className="text-red-400">Isso apaga grupos/jogos anteriores desta liga.</strong></li>
+                                        <li>Embaralha os <strong>{championship.participants.length} times</strong> em grupos de 4.</li>
+                                        <li>Gera 6 rodadas (Ida e Volta) automaticamente.</li>
+                                        <li><strong className="text-red-400">APAGA todos os jogos e pontos atuais.</strong></li>
                                     </ul>
                                 </div>
 
@@ -129,7 +129,43 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                     </section>
 
                     {/* =========================================================
-                        PAINEL 2: MATA-MATA (QUARTAS DE FINAL) - NOVO!
+                        PAINEL 2: GERAR RETURNO (MANUAL / COMPLEMENTAR)
+                       ========================================================= */}
+                    <section className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
+                        <div className="bg-gradient-to-r from-blue-900/40 to-[#121212] p-6 border-b border-white/5 flex items-center gap-4">
+                            <div className="p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
+                                <Repeat className="w-6 h-6 text-blue-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-black uppercase text-white">Gerar Jogos de Volta</h2>
+                                <p className="text-xs text-gray-400 font-bold">Cria Rodadas 4, 5 e 6 baseadas nas atuais.</p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+                            <div className="text-xs text-gray-500 space-y-1 max-w-md">
+                                <p>Use esta opção se você já tem as Rodadas 1, 2 e 3 criadas e quer gerar o returno.</p>
+                                <ul className="list-disc pl-4 text-gray-400 font-medium">
+                                    <li>Lê os jogos das 3 primeiras rodadas.</li>
+                                    <li>Cria as Rodadas 4, 5 e 6 invertendo o mando de campo.</li>
+                                    <li><strong className="text-emerald-400">NÃO apaga o que já foi jogado.</strong></li>
+                                </ul>
+                            </div>
+
+                            <form action={async () => {
+                                'use server'
+                                await generateReturnRoundsAction(slug)
+                            }}>
+                                <button className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-black uppercase px-6 py-4 rounded-xl flex items-center justify-center gap-3 shadow-xl transition-all hover:scale-[1.02] border border-white/10">
+                                    <Repeat className="w-5 h-5" />
+                                    Gerar Returno
+                                </button>
+                            </form>
+                        </div>
+                    </section>
+
+                    {/* =========================================================
+                        PAINEL 3: MATA-MATA (QUARTAS DE FINAL)
                        ========================================================= */}
                     <section className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
                         <div className="bg-gradient-to-r from-orange-900/40 to-[#121212] p-6 border-b border-white/5 flex items-center gap-4">
@@ -149,7 +185,7 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                                 <ul className="list-disc pl-4 text-gray-400 font-medium">
                                     <li>Classificar o 1º e 2º colocado de cada grupo (A, B, C, D).</li>
                                     <li>Criar os cruzamentos automáticos (1ºA x 2ºB, etc).</li>
-                                    <li>Gerar a rodada "Quartas de Final".</li>
+                                    <li>Gerar a rodada "Quartas de Final" em Jogo Único.</li>
                                 </ul>
                             </div>
 
@@ -167,7 +203,7 @@ export default async function EditarCampeonatoPage({ params }: { params: Promise
                     </section>
 
                     {/* =========================================================
-                        PAINEL 3: GESTÃO DE ELENCO
+                        PAINEL 4: GESTÃO DE ELENCO
                        ========================================================= */}
                     <section className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
                         <div className="bg-[#1a1a1a] p-6 border-b border-white/5 flex items-center gap-4">

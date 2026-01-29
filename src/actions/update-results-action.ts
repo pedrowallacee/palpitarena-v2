@@ -6,7 +6,7 @@ import { calculatePoints } from "@/utils/scoring"
 import { getMatchesByDate, getLiveMatches } from "@/services/football-api"
 
 export async function updateRoundResultsAction(roundId: string, slug: string) {
-    console.log("🚀 [DEBUG] Iniciando atualização (MODO LIGA V3 - BLINDADO):", roundId)
+    console.log("🚀 [DEBUG] Atualizando Rodada e Grupos:", roundId)
 
     try {
         const round = await prisma.round.findUnique({
@@ -16,7 +16,9 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
 
         if (!round) return { success: false, message: "Rodada não encontrada" }
 
-        // --- 1. BUSCA DADOS NA API E ATUALIZA JOGOS ---
+        // =================================================================================
+        // 1. ATUALIZAÇÃO VIA API (MANTIDA IGUAL AO SEU)
+        // =================================================================================
         const uniqueDates = new Set<string>()
         round.matches.forEach(m => {
             const dateStr = new Date(m.date).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
@@ -39,7 +41,7 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
         const liveGames = await getLiveMatches()
         if (liveGames.length > 0) foundGames = [...foundGames, ...liveGames]
 
-        // Atualiza placares no banco
+        // Atualiza placares dos Jogos
         for (const apiGame of foundGames) {
             const apiIdInt = Number(apiGame.apiId)
             const matchInDb = round.matches.find(m => m.apiId?.toString() === apiIdInt.toString())
@@ -55,7 +57,9 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
             }
         }
 
-        // --- 2. RECALCULA PONTOS DOS PALPITES ---
+        // =================================================================================
+        // 2. RECALCULA PONTOS DOS PALPITES
+        // =================================================================================
         const updatedRound = await prisma.round.findUnique({
             where: { id: roundId },
             include: { matches: { include: { predictions: true } } }
@@ -76,16 +80,11 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
         }
 
         // =================================================================================
-        // 🏆 ATUALIZAÇÃO DA LIGA (CORRIGIDA)
+        // 3. ATUALIZA DUELOS (X1)
         // =================================================================================
-
-        console.log("⚔️ [LIGA] Processando Duelos e Estatísticas...")
-
-        // A. Atualiza placares e STATUS do duelo
         const currentDuels = await prisma.duel.findMany({ where: { roundId }, include: { homeParticipant: true, awayParticipant: true } })
 
         for (const duel of currentDuels) {
-            // CORREÇÃO: Verifica se userId existe antes de buscar
             if (!duel.homeParticipant.userId || !duel.awayParticipant.userId) continue
 
             const homePoints = await prisma.prediction.aggregate({ _sum: { pointsEarned: true }, where: { userId: duel.homeParticipant.userId, match: { roundId } } })
@@ -94,17 +93,25 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
             const finalHome = homePoints._sum?.pointsEarned ?? 0
             const finalAway = awayPoints._sum?.pointsEarned ?? 0
 
+            // Define vencedor para ficar bonito no banco
+            let winnerId = null
+            if (finalHome > finalAway) winnerId = duel.homeParticipantId
+            if (finalAway > finalHome) winnerId = duel.awayParticipantId
+
             await prisma.duel.update({
                 where: { id: duel.id },
                 data: {
                     homeScore: finalHome,
                     awayScore: finalAway,
+                    winnerId: winnerId,
                     status: 'FINISHED'
                 }
             })
         }
 
-        // B. Recalcula a tabela inteira
+        // =================================================================================
+        // 4. ATUALIZA TABELA GERAL E TABELA DE GRUPOS (AQUI ESTAVA O ERRO)
+        // =================================================================================
         const participants = await prisma.championshipParticipant.findMany({
             where: { championshipId: round.championshipId }
         })
@@ -140,10 +147,11 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
             }
             stats.SG = stats.GP - stats.GC
 
-            // Se 'goalsScored' ainda estiver vermelho, é só rodar 'npx prisma generate'
+            // 🔥 ATUALIZAÇÃO DUPLA (Geral + Grupo) 🔥
             await prisma.championshipParticipant.update({
                 where: { id: p.id },
                 data: {
+                    // Dados Gerais (Legado)
                     points: stats.P,
                     matchesPlayed: stats.J,
                     wins: stats.V,
@@ -151,14 +159,24 @@ export async function updateRoundResultsAction(roundId: string, slug: string) {
                     losses: stats.D,
                     goalsScored: stats.GP,
                     goalsConceded: stats.GC,
-                    goalDifference: stats.SG
+                    goalDifference: stats.SG,
+
+                    // Dados de Grupo (Novo Leaderboard precisa disso!)
+                    groupPoints: stats.P,
+                    groupPlayed: stats.J,
+                    groupWins: stats.V,
+                    groupDraws: stats.E,
+                    groupLosses: stats.D,
+                    groupGF: stats.GP,
+                    groupGC: stats.GC,
+                    groupSG: stats.SG
                 }
             })
         }
 
         revalidatePath(`/campeonatos/${slug}`)
         revalidatePath(`/campeonatos/${slug}/rodada/${roundId}`)
-        return { success: true, message: `Tabela Atualizada! Classificação recalculada.` }
+        return { success: true, message: `Resultados processados e Tabelas (Geral e Grupo) atualizadas!` }
 
     } catch (error) {
         console.error("🔥 [ERRO CRÍTICO]:", error)
