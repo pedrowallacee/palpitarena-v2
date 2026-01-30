@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from "react"
-import { Flame, Trophy, AlertTriangle, Scale, Info, Medal, Swords, ShieldCheck } from "lucide-react"
+import { Flame, Trophy, AlertTriangle, Scale, Info, Medal, Swords, ShieldCheck, Star } from "lucide-react"
 
 // --- TIPOS ---
 interface Prediction {
@@ -27,8 +27,8 @@ interface Participant {
     group?: string | null
     groupPoints?: number
     groupWins?: number
-    groupSG?: number      // <--- IMPORTANTE
-    groupGF?: number      // <--- IMPORTANTE
+    groupSG?: number
+    groupGF?: number
 
     // Campos Gerais
     goalDifference?: number
@@ -70,34 +70,28 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
         ? participants.filter((p: any) => p.group === activeTab)
         : participants
 
-    // --- ORDENAÇÃO CORRIGIDA (CRITÉRIOS FIFA) ---
+    // --- ORDENAÇÃO (CRITÉRIOS FIFA) ---
     const sorted = [...filteredParticipants].sort((a: any, b: any) => {
-        // 1. PONTOS
         const pointsA = hasGroups ? (a.groupPoints || 0) : a.points
         const pointsB = hasGroups ? (b.groupPoints || 0) : b.points
         if (pointsB !== pointsA) return pointsB - pointsA
 
-        // 2. VITÓRIAS
         const winsA = hasGroups ? (a.groupWins || 0) : (a.wins || 0)
         const winsB = hasGroups ? (b.groupWins || 0) : (b.wins || 0)
         if (winsB !== winsA) return winsB - winsA
 
-        // 3. SALDO DE GOLS (SG) - Faltava isso!
         const sgA = hasGroups ? (a.groupSG || 0) : (a.goalDifference || 0)
         const sgB = hasGroups ? (b.groupSG || 0) : (b.goalDifference || 0)
         if (sgB !== sgA) return sgB - sgA
 
-        // 4. GOLS PRÓ (GP)
         const gfA = hasGroups ? (a.groupGF || 0) : (a.goalsScored || 0)
         const gfB = hasGroups ? (b.groupGF || 0) : (b.goalsScored || 0)
         if (gfB !== gfA) return gfB - gfA
 
-        // 5. CRAVADAS (Desempate final)
         const exactA = a.exactScores || 0
         const exactB = b.exactScores || 0
         if (exactB !== exactA) return exactB - exactA
 
-        // 6. ORDEM ALFABÉTICA
         return (a.teamName || a.user.name || "").localeCompare(b.teamName || b.user.name || "")
     })
 
@@ -124,7 +118,7 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
     return (
         <div className="bg-[#121212] border border-white/10 rounded-xl overflow-hidden shadow-2xl flex flex-col font-sans">
 
-            {/* --- NAVEGAÇÃO DE GRUPOS (ABAS) --- */}
+            {/* --- NAVEGAÇÃO DE GRUPOS --- */}
             {hasGroups && (
                 <div className="flex items-center bg-[#0a0a0a] border-b border-white/5 p-1 overflow-x-auto gap-1 scrollbar-hide">
                     {groups.map(group => (
@@ -142,20 +136,19 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                 </div>
             )}
 
-            {/* CABEÇALHO DA TABELA */}
+            {/* CABEÇALHO */}
             <div className="bg-[#1a1a1a] flex items-center text-[9px] md:text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-white/5 py-3 px-2">
                 <div className="w-8 text-center">Pos</div>
                 <div className="flex-1 text-left pl-2">Clube / Treinador</div>
                 <div className="flex items-center gap-0 md:gap-2 text-center">
                     <div className="w-8 md:w-10 text-white font-black">PTS</div>
-                    {/* Alterei de CRAV para SG se for grupo, pois é o critério principal visual */}
                     <div className="w-8 md:w-10 text-gray-400" title={hasGroups ? "Saldo de Gols" : "Cravadas"}>
                         {hasGroups ? "SG" : "CRAV"}
                     </div>
                 </div>
             </div>
 
-            {/* LISTA DE PARTICIPANTES */}
+            {/* LISTA */}
             <div className="divide-y divide-white/5 bg-[#0f0f0f] max-h-[500px] overflow-y-auto">
                 {sorted.length === 0 ? (
                     <div className="p-8 text-center text-xs text-gray-500 font-bold uppercase">Grupo Vazio</div>
@@ -171,7 +164,6 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                         let posContent: React.ReactNode = <span className="text-gray-500 font-mono">{pos}</span>
                         let rowBorder = "border-l-2 border-transparent"
 
-                        // Lógica de Cores
                         if (hasGroups) {
                             if (pos <= 2) {
                                 rowBorder = "border-l-2 border-emerald-500 bg-emerald-500/5"
@@ -229,13 +221,8 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
 
                                 <div className="flex items-center gap-0 md:gap-2 text-center text-xs font-mono">
                                     <div className="w-8 md:w-10 font-black text-white text-sm">{points}</div>
-
-                                    {/* Mostra SG se for grupo, ou Cravadas se for liga */}
                                     <div className={`w-8 md:w-10 font-bold ${sg > 0 ? 'text-emerald-500' : sg < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                                        {hasGroups
-                                            ? (sg > 0 ? `+${sg}` : sg)
-                                            : (p.exactScores || 0)
-                                        }
+                                        {hasGroups ? (sg > 0 ? `+${sg}` : sg) : (p.exactScores || 0)}
                                     </div>
                                 </div>
                             </button>
@@ -244,7 +231,7 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                 )}
             </div>
 
-            {/* --- MODAL (Mantido igual) --- */}
+            {/* --- MODAL DETALHES --- */}
             {selectedParticipant && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelectedParticipant(null)}>
                     <div className="bg-[#121212] w-full max-w-md rounded-3xl border border-white/10 overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
@@ -265,12 +252,6 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                             <h2 className="text-2xl font-black font-teko uppercase text-white leading-none mb-1">{selectedParticipant.teamName || "Sem Clube"}</h2>
                             <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-4">Treinador: {selectedParticipant.user.name}</p>
 
-                            {selectedParticipant.group && (
-                                <div className="mb-4 inline-block px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded text-emerald-400 text-xs font-bold uppercase">
-                                    Grupo {selectedParticipant.group}
-                                </div>
-                            )}
-
                             {selectedParticipant.userId !== currentUserId && (
                                 <div className="flex flex-col items-center gap-3">
                                     <button
@@ -280,47 +261,27 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                         <Swords className="w-3 h-3" />
                                         {isDirectOpponent ? "Modo Duelo Ativo" : "Comparar Comigo"}
                                     </button>
-
-                                    {isDirectOpponent && (
-                                        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isExceeded ? 'bg-red-500/10 border-red-500/50 text-red-400' : 'bg-white/5 border-white/10 text-gray-400'}`}>
-                                            <Scale className="w-3 h-3" />
-                                            <span className="text-xs font-mono">
-                                                <strong className="text-white">{copyCount}</strong> palpites iguais
-                                            </span>
-                                        </div>
-                                    )}
                                 </div>
                             )}
                         </div>
 
+                        {/* LISTA DE PALPITES */}
                         <div className="p-4 flex-1 overflow-y-auto bg-[#0a0a0a]">
                             <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
                                     Palpites: {currentRound?.name || "Rodada Atual"}
                                 </h3>
                                 <button onClick={() => setShowRules(!showRules)} className="text-[10px] flex items-center gap-1 text-emerald-500 hover:text-emerald-400 font-bold uppercase">
-                                    <Info className="w-3 h-3" /> Regras
+                                    <Info className="w-3 h-3" /> Legenda
                                 </button>
                             </div>
 
                             {showRules && (
                                 <div className="bg-[#151515] border border-white/10 rounded-lg p-3 mb-4 text-[10px] text-gray-400 space-y-1 animate-in fade-in slide-in-from-top-2">
-                                    <p className="text-white font-bold mb-2 uppercase border-b border-white/5 pb-1">📋 Limites de Cópia (50%):</p>
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono">
-                                        <div>[ 06 Jogos ] - <span className="text-emerald-400 font-bold">Max 3</span></div>
-                                        <div>[ 08 Jogos ] - <span className="text-emerald-400 font-bold">Max 4</span></div>
-                                        <div>[ 10 Jogos ] - <span className="text-emerald-400 font-bold">Max 5</span></div>
-                                        <div>[ 12 Jogos ] - <span className="text-emerald-400 font-bold">Max 6</span></div>
-                                        <div>[ 14 Jogos ] - <span className="text-emerald-400 font-bold">Max 7</span></div>
-                                        <div>[ 16 Jogos ] - <span className="text-emerald-400 font-bold">Max 8</span></div>
-                                        <div>[ 18 Jogos ] - <span className="text-emerald-400 font-bold">Max 9</span></div>
-                                        <div>[ 20 Jogos ] - <span className="text-emerald-400 font-bold">Max 10</span></div>
-                                    </div>
-                                    <div className="mt-3 pt-2 border-t border-white/5">
-                                        <p className="text-red-400 font-bold uppercase flex items-center gap-1">
-                                            <AlertTriangle className="w-3 h-3" /> Punição: W.O na rodada.
-                                        </p>
-                                    </div>
+                                    <p className="text-white font-bold mb-2 uppercase border-b border-white/5 pb-1">Cores da Pontuação:</p>
+                                    <div className="flex items-center gap-2 text-fuchsia-400 font-bold"><Star className="w-3 h-3 fill-fuchsia-400" /> Super Placar (6+ pts)</div>
+                                    <div className="flex items-center gap-2 text-yellow-400 font-bold"><div className="w-3 h-3 rounded-full bg-yellow-400"></div> Cravada/Empate (3-4 pts)</div>
+                                    <div className="flex items-center gap-2 text-emerald-400 font-bold"><div className="w-3 h-3 rounded-full bg-emerald-400"></div> Acerto Simples (1-2 pts)</div>
                                 </div>
                             )}
 
@@ -334,25 +295,38 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                     const isCopy = selectedParticipant.userId !== currentUserId && advPred && myPred && advPred.homeScore === myPred.homeScore && advPred.awayScore === myPred.awayScore
                                     const highlightCopy = isCopy && isDirectOpponent
 
-                                    let timeStatus = null
-                                    if (isCopy && advPred?.createdAt && myPred?.createdAt) {
-                                        const advDate = new Date(advPred.createdAt)
-                                        const myDate = new Date(myPred.createdAt)
-                                        if (myDate < advDate) timeStatus = "original"
-                                        else timeStatus = "copia"
-                                    }
-
+                                    // Cores Padrão
                                     let borderColor = "border-white/5"
                                     let scoreColor = "text-white"
                                     let pointsBadge = null
 
+                                    // --- LÓGICA VISUAL FINAL (ROXO / AMARELO / VERDE) ---
                                     if ((match.status === 'FINISHED' || match.resultHome !== null) && advPred) {
-                                        if (advPred.exactScore) {
-                                            borderColor = "border-yellow-500/50"; scoreColor = "text-yellow-400"; pointsBadge = <span className="text-[9px] text-yellow-500 font-black">+25</span>
-                                        } else if (advPred.pointsEarned > 0) {
-                                            borderColor = "border-emerald-500/30"; scoreColor = "text-emerald-400"; pointsBadge = <span className="text-[9px] text-emerald-500 font-black">+{advPred.pointsEarned}</span>
-                                        } else {
-                                            borderColor = "border-red-500/20"; scoreColor = "text-red-500"; pointsBadge = <span className="text-[9px] text-red-500 font-black">+0</span>
+                                        const pts = advPred.pointsEarned || 0
+
+                                        if (pts >= 6) {
+                                            // 💜 SUPER PLACAR (Roxo/Neon)
+                                            borderColor = "border-fuchsia-500/50"
+                                            scoreColor = "text-fuchsia-400"
+                                            pointsBadge = <span className="flex items-center gap-1 text-[9px] text-fuchsia-400 font-black animate-pulse drop-shadow-[0_0_3px_rgba(232,121,249,0.8)]"><Star className="w-2 h-2 fill-fuchsia-400" /> SUPER +{pts}</span>
+                                        }
+                                        else if (pts >= 3) {
+                                            // 💛 CRAVADA (Amarelo)
+                                            borderColor = "border-yellow-500/50"
+                                            scoreColor = "text-yellow-400"
+                                            pointsBadge = <span className="text-[9px] text-yellow-500 font-black">+{pts}</span>
+                                        }
+                                        else if (pts > 0) {
+                                            // 💚 ACERTO SIMPLES (Verde)
+                                            borderColor = "border-emerald-500/30"
+                                            scoreColor = "text-emerald-400"
+                                            pointsBadge = <span className="text-[9px] text-emerald-500 font-black">+{pts}</span>
+                                        }
+                                        else {
+                                            // 🔴 ERRO
+                                            borderColor = "border-red-500/20"
+                                            scoreColor = "text-red-500"
+                                            pointsBadge = <span className="text-[9px] text-red-500 font-black">+0</span>
                                         }
                                     }
 
@@ -373,11 +347,7 @@ export function Leaderboard({ participants = [], currentRound, currentUserId }: 
                                                 </div>
                                                 <div className="h-4 flex items-center justify-center gap-2">
                                                     {highlightCopy ? (
-                                                        <>
-                                                            {timeStatus === 'original' && <span className="flex items-center gap-1 text-[8px] font-black uppercase text-red-400 bg-red-500/10 px-1.5 rounded border border-red-500/20 animate-pulse"><AlertTriangle className="w-2.5 h-2.5" /> COPIOU</span>}
-                                                            {timeStatus === 'copia' && <span className="flex items-center gap-1 text-[8px] font-black uppercase text-emerald-400 bg-emerald-500/10 px-1.5 rounded border border-emerald-500/20"><ShieldCheck className="w-2.5 h-2.5" /> ORIGINAL</span>}
-                                                            {!timeStatus && <span className="text-[8px] font-black uppercase text-gray-500">IGUAL</span>}
-                                                        </>
+                                                        <span className="flex items-center gap-1 text-[8px] font-black uppercase text-red-400 bg-red-500/10 px-1.5 rounded border border-red-500/20 animate-pulse"><AlertTriangle className="w-2.5 h-2.5" /> COPIOU</span>
                                                     ) : pointsBadge}
                                                 </div>
                                             </div>

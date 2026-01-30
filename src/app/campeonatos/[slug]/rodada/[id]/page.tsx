@@ -7,6 +7,7 @@ import { PredictionsForm } from "@/components/predictions-form"
 import { MatchSelector } from "@/components/match-selector"
 import { DeleteMatchButton } from "@/components/delete-match-button"
 import { AdminPredictionStatus } from "@/components/admin-prediction-status"
+import { RecalculateButton } from "@/components/recalculate-button" // <--- IMPORT NOVO
 
 export default async function RodadaPage({ params }: { params: Promise<{ slug: string, id: string }> }) {
     const { slug, id } = await params
@@ -50,10 +51,7 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
     const isAdmin = currentUser.role === 'ADMIN'
     const canManage = isOwner || isAdmin
 
-    // --- CORREÇÃO DE FUSO HORÁRIO (AQUI ESTÁ O FIX) ---
-    // O servidor Vercel está em UTC (agora +3h em relação ao Brasil).
-    // Se o prazo é 15:59, o servidor acha que já passou se for 18:00 UTC.
-    // Adicionamos 3 horas ao prazo para "traduzir" para o tempo do servidor.
+    // --- CORREÇÃO DE FUSO HORÁRIO ---
     const deadlineDate = new Date(round.deadline)
     const adjustedDeadline = new Date(deadlineDate.getTime() + (3 * 60 * 60 * 1000))
 
@@ -138,7 +136,6 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
                                 <span className="text-lg">⏳</span>
                                 <p className="text-sm font-bold uppercase tracking-wide">
                                     Prazo: <span className={isClosed ? 'text-red-400' : 'text-emerald-400'}>
-                                        {/* Exibição normal (sem ajuste) porque o navegador cuida do fuso visualmente */}
                                     {new Date(round.deadline).toLocaleString('pt-BR')}
                                     </span>
                                 </p>
@@ -171,7 +168,20 @@ export default async function RodadaPage({ params }: { params: Promise<{ slug: s
 
                 {/* --- ÁREA DE GESTÃO (ADMIN/DONO) --- */}
                 {canManage && (
-                    <div className="mb-12 animate-in slide-in-from-top-4 duration-700 space-y-8">
+                    <div className="mb-12 animate-in slide-in-from-top-4 duration-700 space-y-6">
+
+                        {/* NOVO: PAINEL DE CORREÇÃO (BOTÃO RECALCULAR) */}
+                        <div className="bg-[#181818] border border-yellow-500/20 p-4 rounded-xl flex items-center justify-between shadow-lg shadow-yellow-900/5">
+                            <div>
+                                <h3 className="text-yellow-500 font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+                                    🛠️ Correção de Pontos
+                                </h3>
+                                <p className="text-[10px] text-gray-500 font-bold mt-1">
+                                    Use isso para corrigir erros de cálculo (25pts -: 6pts).
+                                </p>
+                            </div>
+                            <RecalculateButton roundId={round.id} slug={slug} />
+                        </div>
 
                         {/* 2. PAINEL DE COBRANÇA (WHATSAPP) */}
                         <AdminPredictionStatus
