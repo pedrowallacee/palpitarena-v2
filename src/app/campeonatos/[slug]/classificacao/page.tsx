@@ -2,6 +2,18 @@ import { prisma } from "@/lib/prisma"
 import { InternalNavbar } from "@/components/internal-navbar"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
+// 1. IMPORT NOVO
+import { RankingInterface } from "@/components/ranking-interface"
+
+// 2. DADOS DOS CAMPEÕES DA TEMPORADA (Baseado na sua lista)
+const CURRENT_SEASON_CHAMPIONS = [
+    { name: "Lucas Ferreira", team: "2 Títulos (BR A, ALE)", titles: 2 },
+    { name: "Jefferson", team: "2 Títulos (ITA, HOL)", titles: 2 },
+    { name: "Lincoln", team: "1 Título (ING)", titles: 1 },
+    { name: "Bruninho", team: "1 Título (ESP)", titles: 1 },
+    { name: "Oscar", team: "1 Título (FRA)", titles: 1 },
+    { name: "Sulivan", team: "1 Título (POR)", titles: 1 },
+]
 
 export default async function ClassificacaoPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
@@ -28,9 +40,26 @@ export default async function ClassificacaoPage({ params }: { params: Promise<{ 
     const groupNames = Object.keys(groupedParticipants).sort()
     const isGroupStage = groupNames.length > 1 && groupNames[0] !== "GERAL"
 
+    // --- 3. LÓGICA PARA O RANKING INTERFACE (AO VIVO) ---
+    // Ranking Geral por Pontos
+    const liveUsers = championship.participants
+        .map(p => ({
+            id: p.id,
+            name: p.user.name,
+            globalPoints: p.points
+        }))
+        .sort((a, b) => b.globalPoints - a.globalPoints)
+
+    // Hall da Fama (Gols na Cartela)
+    const liveHallOfFame = championship.participants
+        .map(p => ({
+            name: p.user.name,
+            value: p.goalsScored
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 2) // Top 2
+
     // --- CONFIGURAÇÃO DO GRID RESPONSIVO ---
-    // MOBILE: Colunas estreitas (20px) para caber na telinha.
-    // DESKTOP (md:): Colunas largas (40px-50px) para ficar bonito no monitor.
     const gridCols = "grid-cols-[20px_1fr_28px_20px_20px_20px_20px_20px_20px_26px] md:grid-cols-[40px_1fr_50px_40px_40px_40px_40px_40px_40px_40px]"
 
     return (
@@ -209,6 +238,15 @@ export default async function ClassificacaoPage({ params }: { params: Promise<{ 
                         <span>V: Vitórias</span>
                         <span>SG: Saldo</span>
                     </div>
+                </div>
+
+                {/* --- 4. AQUI ENTRA A GALERIA DE LENDAS --- */}
+                <div className="mt-16 border-t border-white/5 pt-12">
+                    <RankingInterface
+                        liveUsers={liveUsers}
+                        liveHallOfFame={liveHallOfFame}
+                        seasonChampions={CURRENT_SEASON_CHAMPIONS}
+                    />
                 </div>
 
             </div>
